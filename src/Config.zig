@@ -153,6 +153,9 @@ cursor_style: vt.CursorStyle = .block,
 /// Whether the default cursor blinks while the window has keyboard focus.
 /// DECSCUSR and DEC mode 12 can still select blinking or a steady cursor.
 cursor_style_blink: bool = false,
+/// Hide the mouse pointer when typing produces terminal input; moving or
+/// clicking the pointer shows it again.
+mouse_hide_while_typing: bool = false,
 
 theme: ?Theme = null,
 light_theme_overrides: ?ThemeOverrides = null,
@@ -338,6 +341,8 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
         self.cursor_style = std.meta.stringToEnum(vt.CursorStyle, value) orelse return error.InvalidValue;
     } else if (std.mem.eql(u8, key, "cursor-style-blink")) {
         self.cursor_style_blink = try parseBool(value);
+    } else if (std.mem.eql(u8, key, "mouse-hide-while-typing")) {
+        self.mouse_hide_while_typing = try parseBool(value);
     } else if (std.mem.eql(u8, key, "theme")) {
         self.theme = try config_theme.parse(arena, value);
     } else if (std.mem.eql(u8, key, "background")) {
@@ -981,6 +986,15 @@ test "cursor style accepts Ghostty's shapes" {
     }
     try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "cursor-style", "beam"));
     try std.testing.expectEqual(vt.CursorStyle.block, config.cursor_style);
+}
+
+test "mouse hiding while typing defaults off and accepts booleans" {
+    var config: Config = .{};
+    try std.testing.expect(!config.mouse_hide_while_typing);
+    try config.set(std.testing.allocator, "mouse-hide-while-typing", "true");
+    try std.testing.expect(config.mouse_hide_while_typing);
+    try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "mouse-hide-while-typing", "1"));
+    try std.testing.expect(config.mouse_hide_while_typing);
 }
 
 test "cursor blink defaults off and accepts booleans" {

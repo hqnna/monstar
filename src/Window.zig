@@ -44,6 +44,8 @@ cursor_shape_device: ?*wp.CursorShapeDeviceV1,
 cursor_theme: ?*wl.CursorTheme,
 cursor_surface: ?*wl.Surface,
 cursor_shape: CursorShape,
+/// The pointer image is hidden over this surface, as while typing.
+pointer_hidden: bool,
 pointer_enter_serial: ?u32,
 /// Clipboard: managers create sources (copy); devices carry offers
 /// (paste) and set selections. Null when the compositor lacks them.
@@ -384,6 +386,7 @@ pub fn create(
         .cursor_theme = cursor_theme,
         .cursor_surface = cursor_surface,
         .cursor_shape = .text,
+        .pointer_hidden = false,
         .pointer_enter_serial = null,
         .data_manager = globals.data_manager,
         .data_device = data_device,
@@ -568,6 +571,14 @@ pub fn setCursorShape(self: *Window, shape: CursorShape) void {
     self.applyCursorShape();
 }
 
+/// Hide or restore the pointer image over this surface. The selected shape
+/// is kept, so showing the pointer restores it.
+pub fn setPointerHidden(self: *Window, hidden: bool) void {
+    if (self.pointer_hidden == hidden) return;
+    self.pointer_hidden = hidden;
+    self.applyCursorShape();
+}
+
 /// Select whether future render buffers carry alpha. Existing busy buffers
 /// cannot be destroyed until wl_buffer.release, so they are retired lazily.
 /// After startup, callers must invalidate any in-flight or held frame.
@@ -693,6 +704,11 @@ pub fn setTextInputCursorRect(self: *Window, rect: TextInputRect) void {
 
 fn applyCursorShape(self: *Window) void {
     const serial = self.pointer_enter_serial orelse return;
+    if (self.pointer_hidden) {
+        // A null surface hides the pointer for both shape backends.
+        if (self.pointer) |pointer| pointer.setCursor(serial, null, 0, 0);
+        return;
+    }
     if (self.cursor_shape_device) |device| {
         device.setShape(serial, self.cursor_shape);
         return;

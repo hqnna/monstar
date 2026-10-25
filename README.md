@@ -153,6 +153,8 @@ Other settings:
   screen (default `50000000`).
 - **image-storage-limit** — Kitty graphics image storage in bytes per screen;
   `0` disables the protocol (default `320000000`).
+- **mouse-hide-while-typing** — Hide the pointer while typing; moving or
+  clicking shows it again (default `false`).
 - **inertial-scrolling** — Whether finger scrolling continues with inertial
   motion after release (default `true`).
 - **smooth-scrolling** — Pixel-level scrollback movement: touchpad scrolling

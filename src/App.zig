@@ -3442,6 +3442,11 @@ fn pointerEvent(ctx: *anyopaque, event: wl.Pointer.Event) void {
     const self: *App = @ptrCast(@alignCast(ctx));
     self.syncScrollTarget();
     switch (event) {
+        // mouse-hide-while-typing: deliberate pointer use shows it again.
+        .enter, .motion, .button => self.window.setPointerHidden(false),
+        else => {},
+    }
+    switch (event) {
         .enter => |enter| {
             self.pointer_x = enter.surface_x.toDouble();
             self.pointer_y = enter.surface_y.toDouble();
@@ -6565,6 +6570,7 @@ fn onKey(self: *App, evdev_keycode: u32, action: vt.input.KeyAction) void {
     // selection-clear-on-typing behavior).
     if (wrote and action != .release and !event.key.modifier()) {
         if (self.cursor_blink.reset()) self.needs_redraw = true;
+        if (self.config.mouse_hide_while_typing) self.window.setPointerHidden(true);
         self.stopFling();
         self.resetSmoothScroll();
         self.clearSelection();
