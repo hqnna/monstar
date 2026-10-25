@@ -167,6 +167,8 @@ Other settings:
 - **cursor-style-blink** — Blink the default cursor while focused (default
   `false`). Programs can request blinking with DECSCUSR or DEC mode 12, which
   is now honored.
+- **clipboard-trim-trailing-spaces** — Remove trailing whitespace from copied
+  lines (default `true`).
 - **copy-on-select** — Where finished mouse selections go: `true` (primary
   selection), `clipboard` (primary selection and clipboard), or `false`
   (default `true`).

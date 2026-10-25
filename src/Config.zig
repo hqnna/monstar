@@ -159,6 +159,8 @@ mouse_hide_while_typing: bool = false,
 /// Copy finished mouse selections to the primary selection, and optionally
 /// to the clipboard too.
 copy_on_select: CopyOnSelect = .primary,
+/// Remove trailing whitespace from each copied line.
+clipboard_trim_trailing_spaces: bool = true,
 
 theme: ?Theme = null,
 light_theme_overrides: ?ThemeOverrides = null,
@@ -351,6 +353,8 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
         self.mouse_hide_while_typing = try parseBool(value);
     } else if (std.mem.eql(u8, key, "copy-on-select")) {
         self.copy_on_select = try parseCopyOnSelect(value);
+    } else if (std.mem.eql(u8, key, "clipboard-trim-trailing-spaces")) {
+        self.clipboard_trim_trailing_spaces = try parseBool(value);
     } else if (std.mem.eql(u8, key, "theme")) {
         self.theme = try config_theme.parse(arena, value);
     } else if (std.mem.eql(u8, key, "background")) {
@@ -1014,6 +1018,15 @@ test "copy on select accepts Ghostty's values" {
     try std.testing.expectEqual(CopyOnSelect.primary, config.copy_on_select);
     try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "copy-on-select", "primary"));
     try std.testing.expectEqual(CopyOnSelect.primary, config.copy_on_select);
+}
+
+test "clipboard trimming defaults on and accepts booleans" {
+    var config: Config = .{};
+    try std.testing.expect(config.clipboard_trim_trailing_spaces);
+    try config.set(std.testing.allocator, "clipboard-trim-trailing-spaces", "false");
+    try std.testing.expect(!config.clipboard_trim_trailing_spaces);
+    try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "clipboard-trim-trailing-spaces", "no"));
+    try std.testing.expect(!config.clipboard_trim_trailing_spaces);
 }
 
 test "mouse hiding while typing defaults off and accepts booleans" {

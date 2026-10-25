@@ -4180,7 +4180,10 @@ fn clipboardDevicesChanged(
 fn selectionText(self: *App) ?[:0]const u8 {
     const screen = self.term.screens.active;
     const sel = screen.selection orelse return null;
-    return screen.selectionString(self.alloc, .{ .sel = sel, .trim = true }) catch null;
+    return screen.selectionString(self.alloc, .{
+        .sel = sel,
+        .trim = self.config.clipboard_trim_trailing_spaces,
+    }) catch null;
 }
 
 /// Claim the primary selection with the currently selected text.
@@ -7750,6 +7753,7 @@ test "search Enter waits for results without blocking and can be cancelled or ed
         const app = try alloc.create(App);
         defer alloc.destroy(app);
         app.alloc = alloc;
+        app.config = .{};
         app.term = try .init(std.testing.io, alloc, .{ .cols = 24, .rows = 3, .max_scrollback_bytes = 1_000_000 });
         defer app.term.deinit(alloc);
         var stream = app.term.vtStream();
