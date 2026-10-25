@@ -427,6 +427,58 @@ Sequences, binding flags and other Ghostty actions are not supported.
 .BI scrollback-limit " = bytes"
 Set the terminal page-storage limit, including the active screen.
 The default is 50000000 bytes.
+.SH QT FRONTEND SETTINGS
+These settings are read by
+.BR monstar-qt ,
+which shows terminals as tabs of splits.
+Terminals accept and ignore them.
+.TP
+.BI qt-tabs-location " = top|bottom|left|right"
+Choose the window edge for the tab strip.
+The default is
+.BR top .
+.TP
+.BI window-show-tab-bar " = always|auto|never"
+Choose when the tab strip is shown;
+.B auto
+shows it with two or more tabs.
+The default is
+.BR auto .
+.TP
+.BI unfocused-split-opacity " = opacity"
+Set the opacity of splits without keyboard focus, from 0.15 to 1.
+The default is 0.7.
+.TP
+.BI unfocused-split-fill " = color"
+Set the color laid over unfocused splits.
+The default is the
+.B background
+color.
+.TP
+.BI split-divider-color " = color"
+Set the color of the line between splits.
+The default is
+.BR 3a3a3a .
+.TP
+.BI focus-follows-mouse " = true|false"
+Focus the split under the pointer.
+The default is
+.BR false .
+.TP
+.BI window-inherit-working-directory " = true|false"
+Start new tabs, splits, and windows in the focused terminal's directory,
+from OSC 7 when the shell reports it.
+The default is
+.BR true .
+.TP
+.BI qt-terminal-command " = path"
+Run this
+.B monstar
+executable for each pane.
+By default the one installed beside
+.B monstar-qt
+is used, then the one found on
+.BR PATH .
 .SH THEME SELECTION
 .TP
 .BI theme " = name"

@@ -317,6 +317,43 @@ itself is never a build dependency; it is only used at runtime, over the
 session bus, when `linux-cgroup = always` is configured and a systemd user
 session is detected.
 
+## Qt frontend
+
+`monstar-qt` shows Monstar terminals as tabs of splits in a Qt window. Each
+pane is a full `monstar` process, so every terminal feature and setting works
+the same; the tab and split keybindings above become active, and the shell
+inside still sees your desktop's `WAYLAND_DISPLAY`.
+
+```sh
+monstar-qt
+monstar-qt --working-directory ~/src -e fish --login
+```
+
+`monstar-qt` accepts `--config`, `-o key=value`, `--working-directory`, `-e`,
+and `--` like `monstar`, and passes them on to its terminals. It runs the
+`monstar` beside its own executable, then the one on `PATH`; `--terminal PATH`
+or `qt-terminal-command` chooses another. It reads these settings from the
+same configuration file:
+
+- **qt-tabs-location** — Tab strip edge: `top`, `bottom`, `left`, or `right`
+  (default `top`).
+- **window-show-tab-bar** — `always`, `auto` (only with two or more tabs), or
+  `never` (default `auto`).
+- **unfocused-split-opacity** — Opacity of unfocused splits, `0.15`–`1`
+  (default `0.7`).
+- **unfocused-split-fill** — Color laid over unfocused splits (default the
+  `background` color).
+- **split-divider-color** — Divider color (default `#3a3a3a`).
+- **focus-follows-mouse** — Focus the split under the pointer (default
+  `false`).
+- **window-inherit-working-directory** — Start new tabs, splits, and windows
+  in the focused terminal's directory (default `true`).
+
+Drag a divider to resize splits. Click a tab to select it; middle-click or
+press its × to close it; press + for a new tab. `SIGUSR1` reloads these
+settings. See [docs/qt-frontend.md](docs/qt-frontend.md) for how it works and
+its current limitations.
+
 ## Terminfo
 
 Monstar uses `TERM=monstar` by default.
@@ -419,6 +456,17 @@ Building requires:
 zig build
 zig build fmt
 zig build test
+```
+
+Build and test `monstar-qt` with Qt 6.8 or newer (QtBase, QtDeclarative, and
+QtWayland), CMake, and the Wayland server library. `nix develop .#qt` provides
+them:
+
+```sh
+cmake -S qt -B qt/build -G Ninja
+cmake --build qt/build
+ctest --test-dir qt/build
+qt/build/monstar-qt --terminal zig-out/bin/monstar
 ```
 
 Rendering uses exact-sRGB linear-light blending with 8-bit framebuffers and
