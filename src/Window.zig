@@ -13,6 +13,7 @@ const xdg = wayland.client.xdg;
 const zxdg = wayland.client.zxdg;
 const zwp = wayland.client.zwp;
 const monstar = wayland.client.monstar;
+const org = wayland.client.org;
 
 const log = std.log.scoped(.window);
 
@@ -37,6 +38,9 @@ system_bell: ?*xdg.SystemBellV1,
 toplevel_icon_manager: ?*xdg.ToplevelIconManagerV1,
 background_effect_manager: ?*ext.BackgroundEffectManagerV1,
 background_effect: ?*ext.BackgroundEffectSurfaceV1,
+/// KWin's blur protocol, used only without ext-background-effect-v1.
+kde_blur_manager: ?*org.KdeKwinBlurManager,
+kde_blur: ?*org.KdeKwinBlur,
 seat: ?*wl.Seat,
 keyboard: ?*wl.Keyboard,
 pointer: ?*wl.Pointer,
@@ -221,6 +225,7 @@ const Globals = struct {
     system_bell: ?*xdg.SystemBellV1 = null,
     toplevel_icon_manager: ?*xdg.ToplevelIconManagerV1 = null,
     background_effect_manager: ?*ext.BackgroundEffectManagerV1 = null,
+    kde_blur_manager: ?*org.KdeKwinBlurManager = null,
     seat: ?*wl.Seat = null,
     seat_name: ?u32 = null,
     viewporter: ?*wp.Viewporter = null,
@@ -382,6 +387,8 @@ pub fn create(
         .toplevel_icon_manager = globals.toplevel_icon_manager,
         .background_effect_manager = globals.background_effect_manager,
         .background_effect = background_effect,
+        .kde_blur_manager = globals.kde_blur_manager,
+        .kde_blur = null,
         .seat = globals.seat,
         .keyboard = null,
         .pointer = null,
@@ -494,10 +501,13 @@ pub fn destroy(self: *Window) void {
     if (self.system_bell) |bell| bell.destroy();
     if (self.toplevel_icon_manager) |manager| manager.destroy();
     if (self.background_effect) |effect| effect.destroy();
+    if (self.kde_blur) |blur| blur.release();
     self.toplevel.destroy();
     self.xdg_surface.destroy();
     self.surface.destroy();
     if (self.background_effect_manager) |manager| manager.destroy();
+    // org_kde_kwin_blur_manager has no destructor request.
+    if (self.kde_blur_manager) |manager| manager.destroy();
     self.wm_base.destroy();
     if (self.shm.getVersion() >= wl.Shm.release_since_version)
         self.shm.release()
@@ -600,7 +610,7 @@ pub fn setBufferAlpha(self: *Window, enabled: bool) void {
 /// Request compositor blur for the whole surface. The effect state is
 /// double-buffered and takes effect with the application's next surface commit.
 pub fn setBackgroundBlur(self: *Window, enabled: bool) void {
-    const effect = self.background_effect orelse return;
+    const effect = self.background_effect orelse return self.setKdeBlur(enabled);
     if (!enabled) {
         effect.setBlurRegion(null);
         return;
@@ -613,6 +623,28 @@ pub fn setBackgroundBlur(self: *Window, enabled: bool) void {
     defer region.destroy();
     region.add(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
     effect.setBlurRegion(region);
+}
+
+/// KWin's blur: a null region blurs the whole surface. Like the standard
+/// protocol, the state applies with the next surface commit.
+fn setKdeBlur(self: *Window, enabled: bool) void {
+    const manager = self.kde_blur_manager orelse return;
+    if (!enabled) {
+        if (self.kde_blur) |blur| {
+            blur.release();
+            self.kde_blur = null;
+            manager.unset(self.surface);
+        }
+        return;
+    }
+    if (self.kde_blur != null) return;
+    const blur = manager.create(self.surface) catch |err| {
+        log.warn("KDE blur setup failed: {}", .{err});
+        return;
+    };
+    blur.setRegion(null);
+    blur.commit();
+    self.kde_blur = blur;
 }
 
 /// Ask the tab and split host to perform a Ghostty-syntax action for this
@@ -1091,6 +1123,9 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                     globals.background_effect_manager = manager;
                     manager.setListener(*Globals, backgroundEffectManagerListener, globals);
                 }
+            } else if (std.mem.orderZ(u8, global.interface, org.KdeKwinBlurManager.interface.name) == .eq) {
+                if (globals.kde_blur_manager == null)
+                    globals.kde_blur_manager = registry.bind(global.name, org.KdeKwinBlurManager, 1) catch return;
             } else if (std.mem.orderZ(u8, global.interface, wl.Seat.interface.name) == .eq) {
                 if (globals.seat == null) {
                     const seat = registry.bind(global.name, wl.Seat, @min(global.version, wl.Seat.generated_version)) catch return;

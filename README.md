@@ -106,6 +106,8 @@ By default, `background-opacity` affects only the default terminal background
 and padding. Set `background-opacity-cells = true` to apply it to explicit cell
 background colors too. Monstar requests compositor-provided blur whenever the
 background is translucent; set `background-blur = false` to keep it clear.
+Blur uses the standard `ext-background-effect-v1` protocol, or KWin's blur
+protocol on KDE Plasma versions without it.
 
 Leave `theme` unset to follow the desktop light/dark preference with Monstar's
 built-in Fluent 2 color schemes. Load bundled iTerm2 color schemes by name. Put
