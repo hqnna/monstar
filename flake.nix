@@ -84,9 +84,29 @@
               '';
             };
           });
+
+          monstar-qt = pkgs.stdenv.mkDerivation {
+            pname = "monstar-qt";
+            version = "1.1.0";
+            src = self;
+            cmakeDir = "../qt";
+
+            nativeBuildInputs = qtNativeBuildInputs pkgs ++ [ pkgs.qt6.wrapQtAppsHook ];
+            buildInputs = qtBuildInputs pkgs;
+            doCheck = true;
+
+            # Run the terminal from the same flake by default.
+            qtWrapperArgs = [
+              "--prefix" "PATH" ":" (lib.makeBinPath [ self.packages.${system}.default ])
+            ];
+          };
         });
 
       apps = forAllSystems (system: {
+        monstar-qt = {
+          type = "app";
+          program = lib.getExe' self.packages.${system}.monstar-qt "monstar-qt";
+        };
         default = {
           type = "app";
           program = lib.getExe' self.packages.${system}.default "monstar";
