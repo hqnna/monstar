@@ -114,6 +114,9 @@ window_height: u16 = 0,
 /// Starting directory for the child: an absolute path, `~`, or `~/path`.
 /// Unset inherits Monstar's directory. This only affects startup.
 working_directory: ?[:0]const u8 = null,
+/// TERM value for the child. Monstar installs a `monstar` terminfo entry;
+/// other values should name an entry the child's systems recognize.
+term: [:0]const u8 = "monstar",
 /// Command to run; unset falls back to $SHELL, then /bin/sh. This only
 /// affects startup because reloading does not replace a running child.
 command: ?Command = null,
@@ -295,6 +298,9 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
         const home_relative = std.mem.eql(u8, value, "~") or std.mem.startsWith(u8, value, "~/");
         if (!home_relative and !std.fs.path.isAbsolute(value)) return error.InvalidValue;
         self.working_directory = try arena.dupeZ(u8, value);
+    } else if (std.mem.eql(u8, key, "term")) {
+        if (std.mem.indexOfAny(u8, value, " \t=") != null) return error.InvalidValue;
+        self.term = try arena.dupeZ(u8, value);
     } else if (std.mem.eql(u8, key, "command")) {
         self.command = try parseCommand(arena, value);
     } else if (std.mem.eql(u8, key, "pipe-command-output")) {
@@ -1010,6 +1016,19 @@ test "cursor style accepts Ghostty's shapes" {
     }
     try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "cursor-style", "beam"));
     try std.testing.expectEqual(vt.CursorStyle.block, config.cursor_style);
+}
+
+test "term defaults to monstar and rejects malformed names" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    var config: Config = .{};
+    try std.testing.expectEqualStrings("monstar", config.term);
+    try config.set(arena, "term", "xterm-256color");
+    try std.testing.expectEqualStrings("xterm-256color", config.term);
+    try std.testing.expectError(error.InvalidValue, config.set(arena, "term", "xterm 256color"));
+    try std.testing.expectError(error.InvalidValue, config.set(arena, "term", "a=b"));
+    try std.testing.expectEqualStrings("xterm-256color", config.term);
 }
 
 test "title is unset by default and keeps spaces" {

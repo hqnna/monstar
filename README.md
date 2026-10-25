@@ -139,6 +139,8 @@ Other settings:
 
 - **app-id** — Wayland app-id and desktop-entry hint for desktop integration
   (default `dev.rockorager.monstar`).
+- **term** — `TERM` value for the child (default `monstar`). See
+  [Terminfo](#terminfo) for remote hosts that lack the entry.
 - **title** — Fixed window title; title escape sequences from programs are
   ignored while it is set. `--title` only sets the initial title.
 - **window-width / window-height** — Initial terminal grid size in cells.

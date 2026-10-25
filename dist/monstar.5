@@ -97,6 +97,16 @@ standard input when
 is pressed.
 The default is unset.
 .TP
+.BI term " = name"
+Set the
+.B TERM
+environment variable for the child.
+The default is
+.BR monstar ,
+which names the installed terminfo entry.
+Other values should name an entry known on every system the child reaches,
+for example over SSH.
+.TP
 .BI title " = string"
 Set a fixed window title.
 While set, title changes requested by programs with OSC 0 or OSC 2 are
