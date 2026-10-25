@@ -12,6 +12,7 @@ const wp = wayland.client.wp;
 const xdg = wayland.client.xdg;
 const zxdg = wayland.client.zxdg;
 const zwp = wayland.client.zwp;
+const monstar = wayland.client.monstar;
 
 const log = std.log.scoped(.window);
 
@@ -59,6 +60,8 @@ text_input_enabled: bool,
 text_input_rect: ?TextInputRect,
 decoration_manager: ?*zxdg.DecorationManagerV1,
 toplevel_decoration: ?*zxdg.ToplevelDecorationV1,
+/// Tab and split host, such as monstar-qt. Null in ordinary compositors.
+host: ?*monstar.HostV1,
 viewport: ?*wp.Viewport,
 fractional_scale: ?*wp.FractionalScaleV1,
 surface: *wl.Surface,
@@ -227,6 +230,7 @@ const Globals = struct {
     primary_manager: ?*zwp.PrimarySelectionDeviceManagerV1 = null,
     text_input_manager: ?*zwp.TextInputManagerV3 = null,
     decoration_manager: ?*zxdg.DecorationManagerV1 = null,
+    host: ?*monstar.HostV1 = null,
     outputs: std.ArrayList(*OutputState) = .empty,
 
     fn deinit(self: *Globals) void {
@@ -398,6 +402,7 @@ pub fn create(
         .text_input_rect = null,
         .decoration_manager = globals.decoration_manager,
         .toplevel_decoration = toplevel_decoration,
+        .host = globals.host,
         .viewport = viewport,
         .fractional_scale = fractional_scale,
         .surface = surface,
@@ -482,6 +487,7 @@ pub fn destroy(self: *Window) void {
     if (self.text_input_manager) |manager| manager.destroy();
     if (self.toplevel_decoration) |decoration| decoration.destroy();
     if (self.decoration_manager) |manager| manager.destroy();
+    if (self.host) |host| host.destroy();
     if (self.activation_token) |token| token.destroy();
     if (self.attention_token) |token| token.destroy();
     if (self.activation) |activation| activation.destroy();
@@ -607,6 +613,13 @@ pub fn setBackgroundBlur(self: *Window, enabled: bool) void {
     defer region.destroy();
     region.add(0, 0, std.math.maxInt(i32), std.math.maxInt(i32));
     effect.setBlurRegion(region);
+}
+
+/// Ask the tab and split host to perform a Ghostty-syntax action for this
+/// toplevel. Does nothing without a host.
+pub fn performHostAction(self: *Window, action: [*:0]const u8, working_directory: ?[*:0]const u8) void {
+    const host = self.host orelse return;
+    host.performAction(self.surface, action, working_directory);
 }
 
 pub fn ringBell(self: *Window) void {
@@ -1103,6 +1116,9 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
             } else if (std.mem.orderZ(u8, global.interface, zwp.TextInputManagerV3.interface.name) == .eq) {
                 if (globals.text_input_manager == null)
                     globals.text_input_manager = registry.bind(global.name, zwp.TextInputManagerV3, 1) catch return;
+            } else if (std.mem.orderZ(u8, global.interface, monstar.HostV1.interface.name) == .eq) {
+                if (globals.host == null)
+                    globals.host = registry.bind(global.name, monstar.HostV1, 1) catch return;
             } else if (std.mem.orderZ(u8, global.interface, zxdg.DecorationManagerV1.interface.name) == .eq) {
                 if (globals.decoration_manager == null)
                     globals.decoration_manager = registry.bind(global.name, zxdg.DecorationManagerV1, @min(global.version, zxdg.DecorationManagerV1.generated_version)) catch return;

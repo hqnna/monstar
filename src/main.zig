@@ -407,6 +407,9 @@ fn buildEnvp(
         if (cwd != null and std.mem.startsWith(u8, value, "PWD=")) continue;
         // The launcher token belongs to our window, not the shell or its children.
         if (std.mem.startsWith(u8, value, "XDG_ACTIVATION_TOKEN=")) continue;
+        // Hosts such as monstar-qt connect us over a private socket. Children
+        // must keep using WAYLAND_DISPLAY, the host's own compositor.
+        if (std.mem.startsWith(u8, value, "WAYLAND_SOCKET=")) continue;
         if (std.mem.startsWith(u8, value, "TERMINFO=")) has_terminfo = true;
         try list.append(arena, e);
     }
@@ -437,11 +440,12 @@ fn buildEnvp(
     return slice.ptr;
 }
 
-test "shell environment excludes the launch activation token" {
+test "shell environment excludes the launch activation token and host socket" {
     var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena_state.deinit();
     const envp = [_:null]?[*:0]const u8{
         "XDG_ACTIVATION_TOKEN=launcher-token",
+        "WAYLAND_SOCKET=7",
         "TERM=old-terminal",
         "COLORTERM=old-color",
         "TERMINFO=/custom/terminfo",

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="monstar_host_v1">
+  <copyright>
+    Copyright (c) Monstar contributors
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice (including the next
+    paragraph) shall be included in all copies or substantial portions of the
+    Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+
+  <interface name="monstar_host_v1" version="1">
+    <description summary="terminal window management by a hosting application">
+      A hosting application, such as monstar-qt, embeds terminal surfaces as
+      tabs and splits. It advertises this global so a terminal can forward
+      window-management key bindings that it cannot perform on its own.
+
+      Compositors that are not terminal hosts do not advertise this global.
+    </description>
+
+    <request name="destroy" type="destructor">
+      <description summary="destroy the host object"/>
+    </request>
+
+    <request name="perform_action">
+      <description summary="ask the host to perform a window action">
+        Ask the host to perform a window-management action on behalf of the
+        toplevel whose wl_surface is given. The action uses Ghostty's key
+        binding action syntax, for example "new_tab", "new_split:right",
+        "goto_split:left", "goto_tab:2", or "resize_split:up,10". Hosts
+        ignore actions they do not support.
+
+        working_directory is the terminal's current directory, when known,
+        so new tabs, splits, and windows can start in it.
+      </description>
+      <arg name="surface" type="object" interface="wl_surface"/>
+      <arg name="action" type="string"/>
+      <arg name="working_directory" type="string" allow-null="true"/>
+    </request>
+  </interface>
+</protocol>

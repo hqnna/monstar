@@ -2166,6 +2166,9 @@ fn reloadConfig(self: *App) void {
 /// in the shell's current directory through the user service manager so the
 /// new window is not adopted by this monstar's launcher.
 fn spawnNewWindow(self: *App) void {
+    // A host opens its own kind of window, such as a new monstar-qt window.
+    if (self.hostAvailable()) return self.sendHostAction("new_window");
+
     var arena_state: std.heap.ArenaAllocator = .init(self.alloc);
     defer arena_state.deinit();
     const arena = arena_state.allocator();
@@ -2636,6 +2639,8 @@ fn spawnEnvp(
         // Activation tokens are single-use and must not leak from the process
         // that launched us into unrelated children.
         if (std.mem.startsWith(u8, std.mem.span(e), "XDG_ACTIVATION_TOKEN=")) continue;
+        // A host's private connection belongs to this process alone.
+        if (std.mem.startsWith(u8, std.mem.span(e), "WAYLAND_SOCKET=")) continue;
         try list.append(arena, e);
     }
     if (pwd) |p| {
@@ -6551,13 +6556,28 @@ fn handleScrollbackKey(self: *App, event: vt.input.KeyEvent, scroll: KeyBindingA
 /// Whether a hosting application, such as monstar-qt, manages this window's
 /// tabs and splits.
 fn hostAvailable(self: *const App) bool {
-    _ = self;
-    return false;
+    return self.window.host != null;
 }
 
 fn performHostAction(self: *App, action: keybind.HostAction) void {
-    _ = self;
-    _ = action;
+    var buf: [64]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(buf[0 .. buf.len - 1]);
+    // Every action, including its largest parameters, fits.
+    action.format(&writer) catch unreachable;
+    buf[writer.end] = 0;
+    self.sendHostAction(buf[0..writer.end :0]);
+}
+
+/// Forward an action to the host with the terminal's OSC 7 directory, so new
+/// tabs, splits, and windows can start there.
+fn sendHostAction(self: *App, action: [:0]const u8) void {
+    var arena_state: std.heap.ArenaAllocator = .init(self.alloc);
+    defer arena_state.deinit();
+    const pwd: ?[:0]const u8 = pwd: {
+        const url = self.term.getPwd() orelse break :pwd null;
+        break :pwd clipboard_format.osc7Path(arena_state.allocator(), url) catch null;
+    };
+    self.window.performHostAction(action, if (pwd) |path| path.ptr else null);
 }
 
 fn onKey(self: *App, evdev_keycode: u32, action: vt.input.KeyAction) void {
@@ -6645,6 +6665,9 @@ test "fixed shortcuts consume repeats and releases only with matching modifiers"
     app.wheel_scroll_pixels = 0;
     // Inactive blinking never touches its timer.
     app.cursor_blink = .{ .fd = -1 };
+    var window: Window = undefined;
+    window.host = null;
+    app.window = &window;
     app.selection_gesture = .init;
     app.selection_autoscroll_fd = try createTimerFd();
     defer _ = linux.close(app.selection_autoscroll_fd);

@@ -32,6 +32,8 @@ pub fn build(b: *std.Build) void {
     scanner.addSystemProtocol("unstable/xdg-decoration/xdg-decoration-unstable-v1.xml");
     scanner.addSystemProtocol("unstable/primary-selection/primary-selection-unstable-v1.xml");
     scanner.addSystemProtocol("unstable/text-input/text-input-unstable-v3.xml");
+    // Monstar's own protocol for tab and split hosts such as monstar-qt.
+    scanner.addCustomProtocol(b.path("protocol/monstar-host-v1.xml"));
     // Generate against current stable protocol definitions. Runtime binding
     // still negotiates the compositor-advertised version, and Window keeps
     // fallbacks for every optional/versioned feature it uses.
@@ -51,6 +53,7 @@ pub fn build(b: *std.Build) void {
     scanner.generate("wl_data_device_manager", 4);
     scanner.generate("zwp_primary_selection_device_manager_v1", 1);
     scanner.generate("zwp_text_input_manager_v3", 1);
+    scanner.generate("monstar_host_v1", 1);
     const wayland_mod = b.createModule(.{ .root_source_file = scanner.result });
 
     const root_module = b.createModule(.{

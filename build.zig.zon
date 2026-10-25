@@ -28,6 +28,7 @@
         "build.zig.zon",
         "dist",
         "LICENSE",
+        "protocol",
         "README.md",
         "scripts",
         "src",
