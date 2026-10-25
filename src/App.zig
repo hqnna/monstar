@@ -539,6 +539,7 @@ pub fn init(
         .max_scrollback_bytes = config.scrollback_limit,
         .colors = colors,
         .default_modes = .{ .grapheme_cluster = true },
+        .default_cursor_style = config.cursor_style,
         // libghostty-vt defaults to a conservative 10MB, which rejects a
         // single fullscreen image on large displays (a 4K RGBA frame is
         // ~32MB). Default matches the Ghostty app (320MB).
@@ -2645,6 +2646,10 @@ fn applyConfig(self: *App, new_config: Config) !void {
     self.window.setBufferAlpha(new_config.background_opacity < 255);
     self.window.setBackgroundBlur(new_config.background_blur and new_config.background_opacity < 255);
     self.window.toplevel.setAppId(new_config.app_id);
+
+    // Programs that chose a shape with DECSCUSR keep it until they select
+    // the default again.
+    self.term.setDefaultCursorStyle(new_config.cursor_style);
 
     if (new_config.image_storage_limit != self.config.image_storage_limit) {
         self.term.setKittyGraphicsSizeLimit(self.alloc, new_config.image_storage_limit);

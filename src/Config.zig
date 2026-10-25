@@ -147,6 +147,9 @@ background_opacity: u8 = 255,
 background_blur: bool = true,
 /// Whether background opacity also applies to explicit cell backgrounds.
 background_opacity_cells: bool = false,
+/// Cursor shape used until a program selects one with DECSCUSR, and restored
+/// by DECSCUSR 0 or a terminal reset.
+cursor_style: vt.CursorStyle = .block,
 
 theme: ?Theme = null,
 light_theme_overrides: ?ThemeOverrides = null,
@@ -328,6 +331,8 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
             false
         else
             return error.InvalidValue;
+    } else if (std.mem.eql(u8, key, "cursor-style")) {
+        self.cursor_style = std.meta.stringToEnum(vt.CursorStyle, value) orelse return error.InvalidValue;
     } else if (std.mem.eql(u8, key, "theme")) {
         self.theme = try config_theme.parse(arena, value);
     } else if (std.mem.eql(u8, key, "background")) {
@@ -949,6 +954,22 @@ test "background opacity cells accepts booleans" {
     try config.set(std.testing.allocator, "background-opacity-cells", "false");
     try std.testing.expect(!config.background_opacity_cells);
     try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "background-opacity-cells", "yes"));
+}
+
+test "cursor style accepts Ghostty's shapes" {
+    var config: Config = .{};
+    try std.testing.expectEqual(vt.CursorStyle.block, config.cursor_style);
+    for ([_]struct { text: []const u8, style: vt.CursorStyle }{
+        .{ .text = "bar", .style = .bar },
+        .{ .text = "underline", .style = .underline },
+        .{ .text = "block_hollow", .style = .block_hollow },
+        .{ .text = "block", .style = .block },
+    }) |case| {
+        try config.set(std.testing.allocator, "cursor-style", case.text);
+        try std.testing.expectEqual(case.style, config.cursor_style);
+    }
+    try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "cursor-style", "beam"));
+    try std.testing.expectEqual(vt.CursorStyle.block, config.cursor_style);
 }
 
 test "palette accepts all indices and numeric bases" {

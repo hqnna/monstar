@@ -160,6 +160,8 @@ Other settings:
   high-resolution wheels) are eased over a short animation (default `true`).
   Set to `false` for whole-row scrolling. Scrolling sent to applications stays
   discrete.
+- **cursor-style** — Default cursor shape: `block`, `bar`, `underline`, or
+  `block_hollow` (default `block`). Programs can still change it with DECSCUSR.
 - **copy-highlight-duration** — Post-copy selection flash in milliseconds;
   `0` disables the flash (default `200`).
 - **keybind** — Repeatable Ghostty-style `trigger=action` bindings for line

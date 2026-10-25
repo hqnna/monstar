@@ -239,6 +239,15 @@ sets both settings, and
 .B \-\-window-size-pixels
 takes precedence over them.
 Reloading does not resize an existing window.
+.SH CURSOR SETTINGS
+.TP
+.BI cursor-style " = block|bar|underline|block_hollow"
+Set the default cursor shape.
+The default is
+.BR block .
+Programs may select another shape with DECSCUSR; the configured shape returns
+when a program requests the default shape or resets the terminal.
+Without keyboard focus the cursor is always drawn as a hollow block.
 .SH STORAGE AND INPUT SETTINGS
 .TP
 .BI copy-highlight-duration " = milliseconds"
