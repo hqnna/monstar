@@ -167,6 +167,9 @@ Other settings:
 - **cursor-style-blink** — Blink the default cursor while focused (default
   `false`). Programs can request blinking with DECSCUSR or DEC mode 12, which
   is now honored.
+- **copy-on-select** — Where finished mouse selections go: `true` (primary
+  selection), `clipboard` (primary selection and clipboard), or `false`
+  (default `true`).
 - **copy-highlight-duration** — Post-copy selection flash in milliseconds;
   `0` disables the flash (default `200`).
 - **keybind** — Repeatable Ghostty-style `trigger=action` bindings for line

@@ -156,6 +156,9 @@ cursor_style_blink: bool = false,
 /// Hide the mouse pointer when typing produces terminal input; moving or
 /// clicking the pointer shows it again.
 mouse_hide_while_typing: bool = false,
+/// Copy finished mouse selections to the primary selection, and optionally
+/// to the clipboard too.
+copy_on_select: CopyOnSelect = .primary,
 
 theme: ?Theme = null,
 light_theme_overrides: ?ThemeOverrides = null,
@@ -171,6 +174,9 @@ copy_highlight_foreground: ?vt.color.RGB = null,
 palette: [256]?vt.color.RGB = @splat(null),
 
 pub const LinuxCgroup = enum { never, always };
+/// Where a finished mouse selection is copied. Ghostty spells these
+/// `false`, `true`, and `clipboard`.
+pub const CopyOnSelect = enum { never, primary, clipboard };
 pub const NotifyOnCommandFinish = enum { never, unfocused, always };
 pub const CommandFinishAction = struct {
     bell: bool = true,
@@ -343,6 +349,8 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
         self.cursor_style_blink = try parseBool(value);
     } else if (std.mem.eql(u8, key, "mouse-hide-while-typing")) {
         self.mouse_hide_while_typing = try parseBool(value);
+    } else if (std.mem.eql(u8, key, "copy-on-select")) {
+        self.copy_on_select = try parseCopyOnSelect(value);
     } else if (std.mem.eql(u8, key, "theme")) {
         self.theme = try config_theme.parse(arena, value);
     } else if (std.mem.eql(u8, key, "background")) {
@@ -367,6 +375,13 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
     } else {
         return error.UnknownKey;
     }
+}
+
+fn parseCopyOnSelect(value: []const u8) error{InvalidValue}!CopyOnSelect {
+    if (std.mem.eql(u8, value, "false")) return .never;
+    if (std.mem.eql(u8, value, "true")) return .primary;
+    if (std.mem.eql(u8, value, "clipboard")) return .clipboard;
+    return error.InvalidValue;
 }
 
 fn parseBool(value: []const u8) error{InvalidValue}!bool {
@@ -986,6 +1001,19 @@ test "cursor style accepts Ghostty's shapes" {
     }
     try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "cursor-style", "beam"));
     try std.testing.expectEqual(vt.CursorStyle.block, config.cursor_style);
+}
+
+test "copy on select accepts Ghostty's values" {
+    var config: Config = .{};
+    try std.testing.expectEqual(CopyOnSelect.primary, config.copy_on_select);
+    try config.set(std.testing.allocator, "copy-on-select", "clipboard");
+    try std.testing.expectEqual(CopyOnSelect.clipboard, config.copy_on_select);
+    try config.set(std.testing.allocator, "copy-on-select", "false");
+    try std.testing.expectEqual(CopyOnSelect.never, config.copy_on_select);
+    try config.set(std.testing.allocator, "copy-on-select", "true");
+    try std.testing.expectEqual(CopyOnSelect.primary, config.copy_on_select);
+    try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "copy-on-select", "primary"));
+    try std.testing.expectEqual(CopyOnSelect.primary, config.copy_on_select);
 }
 
 test "mouse hiding while typing defaults off and accepts booleans" {

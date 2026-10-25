@@ -4082,8 +4082,17 @@ fn finishSelection(self: *App) void {
     self.selection_gesture.release(&self.term, .{ .pin = self.pinAtPointer() });
     self.selection_rectangle = false;
     self.stopSelectionAutoscrollTimer();
-    // Finished selections claim the primary selection, X style.
-    self.copyToPrimary();
+    switch (self.config.copy_on_select) {
+        .never => {},
+        // Finished selections claim the primary selection, X style.
+        .primary => self.copyToPrimary(),
+        .clipboard => {
+            self.copyToPrimary();
+            // Unlike Ctrl+Shift+C, selecting does not flash the highlight.
+            const text = self.selectionText() orelse return;
+            _ = self.clipboard.claim(.clipboard, text, self.last_serial);
+        },
+    }
 }
 
 fn applySelection(self: *App, selection: ?vt.Selection, clear_if_null: bool) void {

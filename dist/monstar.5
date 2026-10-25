@@ -263,6 +263,19 @@ Set how long copied selections flash.
 The default is 200 milliseconds.
 Zero disables the flash.
 .TP
+.BI copy-on-select " = true|false|clipboard"
+Choose where a finished mouse selection is copied.
+.B true
+claims the primary selection,
+.B clipboard
+claims both the primary selection and the clipboard, and
+.B false
+copies nothing until
+.B Ctrl+Shift+C
+is pressed.
+The default is
+.BR true .
+.TP
 .BI image-storage-limit " = bytes"
 Set the kitty graphics image-data limit per terminal screen.
 The default is 320000000 bytes and the maximum is 4294967295.
