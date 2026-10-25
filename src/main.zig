@@ -262,25 +262,26 @@ fn invalidCli(init: std.process.Init) noreturn {
 /// GUI mode: run a live terminal session in a window.
 fn gui(init: std.process.Init, cli: CliOptions) !void {
     const arena = init.arena.allocator();
+    const environ = try snapshotEnviron(arena, init.minimal.environ);
 
     var config = if (cli.config_path) |path|
         Config.loadPath(arena, path)
     else
-        Config.load(arena, init.minimal.environ);
+        Config.load(arena, environ);
     for (cli.config_overrides) |override| {
         config.applyOverride(arena, override) catch return error.InvalidCli;
     }
-    try config.resolveThemes(init.io, arena, init.minimal.environ);
-    const working_directory = try resolveWorkingDirectory(arena, init.minimal.environ, config.working_directory);
+    try config.resolveThemes(init.io, arena, environ);
+    const working_directory = try resolveWorkingDirectory(arena, environ, config.working_directory);
 
-    const command = try buildCommand(arena, config, init.minimal.environ, cli.command_mode, cli.command, working_directory);
-    const envp = try buildEnvp(init.io, arena, init.minimal.environ, working_directory, config.term, config.env.items);
+    const command = try buildCommand(arena, config, environ, cli.command_mode, cli.command, working_directory);
+    const envp = try buildEnvp(init.io, arena, environ, working_directory, config.term, config.env.items);
 
     const app = try App.init(
         init.io,
         init.gpa,
         config,
-        init.minimal.environ,
+        environ,
         command.path,
         command.argv.ptr,
         envp,
@@ -294,8 +295,37 @@ fn gui(init: std.process.Init, cli: CliOptions) !void {
         },
     );
     defer app.deinit();
-    app.window.initial_activation_token = init.minimal.environ.getPosix("XDG_ACTIVATION_TOKEN");
+    app.window.initial_activation_token = environ.getPosix("XDG_ACTIVATION_TOKEN");
     try app.run();
+}
+
+/// Copy the process environment's entry list. libwayland consumes
+/// WAYLAND_SOCKET with unsetenv, which shifts the C environment array in
+/// place and would leave holes in a borrowed slice. The entry strings are
+/// never freed, so the copy only owns the list. WAYLAND_SOCKET is omitted:
+/// it is a host's private connection to this process alone.
+fn snapshotEnviron(arena: std.mem.Allocator, environ: std.process.Environ) !std.process.Environ {
+    var list: std.ArrayList(?[*:0]const u8) = .empty;
+    for (environ.block.slice) |entry| {
+        const e = entry orelse continue;
+        if (std.mem.startsWith(u8, std.mem.span(e), "WAYLAND_SOCKET=")) continue;
+        try list.append(arena, e);
+    }
+    return .{ .block = .{ .slice = try list.toOwnedSliceSentinel(arena, null) } };
+}
+
+test "environment snapshot drops the host socket and survives unsetenv-style shifts" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    var entries = [_:null]?[*:0]const u8{ "A=1", "WAYLAND_SOCKET=5", "B=2" };
+    const snapshot = try snapshotEnviron(arena_state.allocator(), .{ .block = .{ .slice = &entries } });
+    // What glibc's unsetenv does to the original array.
+    entries[1] = entries[2];
+    entries[2] = null;
+    try std.testing.expectEqual(@as(usize, 2), snapshot.block.slice.len);
+    try std.testing.expectEqualStrings("1", snapshot.getPosix("A").?);
+    try std.testing.expectEqualStrings("2", snapshot.getPosix("B").?);
+    try std.testing.expectEqual(null, snapshot.getPosix("WAYLAND_SOCKET"));
 }
 
 /// Command-line sizes take precedence; the configured grid size applies only
