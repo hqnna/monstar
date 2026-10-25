@@ -139,6 +139,8 @@ Other settings:
 
 - **app-id** — Wayland app-id and desktop-entry hint for desktop integration
   (default `dev.rockorager.monstar`).
+- **env** — Repeatable `NAME=value` child environment entries; `NAME=`
+  removes an inherited variable.
 - **term** — `TERM` value for the child (default `monstar`). See
   [Terminfo](#terminfo) for remote hosts that lack the entry.
 - **title** — Fixed window title; title escape sequences from programs are

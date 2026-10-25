@@ -52,9 +52,11 @@ are reapplied after the file is loaded.
 Visual and interaction settings apply to the running window.
 The
 .BR command ,
+.BR env ,
 .BR linux-cgroup ,
+.BR scrollback-limit ,
 and
-.B scrollback-limit
+.B term
 settings describe resources created at startup and do not replace or move an
 existing child or resize existing scrollback storage.
 .SH GENERAL SETTINGS
@@ -79,6 +81,23 @@ When unset,
 and then
 .B /bin/sh
 are used.
+.TP
+.BI env " = NAME=value"
+Set an environment variable for the child.
+Repeat this setting for more variables; a later entry for the same name
+replaces an earlier one.
+An empty value, as in
+.BR "env = NAME=" ,
+removes the variable from the inherited environment.
+Entries apply after Monstar sets
+.BR TERM ,
+.BR COLORTERM ,
+and
+.BR PWD ,
+so they can replace those too.
+Like
+.BR command ,
+this only affects children started afterwards.
 .TP
 .BI linux-cgroup " = never|always"
 Choose whether each newly spawned child is moved into a separate transient

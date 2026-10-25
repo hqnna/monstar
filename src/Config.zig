@@ -117,6 +117,10 @@ working_directory: ?[:0]const u8 = null,
 /// TERM value for the child. Monstar installs a `monstar` terminfo entry;
 /// other values should name an entry the child's systems recognize.
 term: [:0]const u8 = "monstar",
+/// Child environment changes as `KEY=VALUE` entries; `KEY=` removes an
+/// inherited variable. Later entries for a key replace earlier ones. Backed
+/// by the config arena.
+env: std.ArrayList([:0]const u8) = .empty,
 /// Command to run; unset falls back to $SHELL, then /bin/sh. This only
 /// affects startup because reloading does not replace a running child.
 command: ?Command = null,
@@ -301,6 +305,8 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
     } else if (std.mem.eql(u8, key, "term")) {
         if (std.mem.indexOfAny(u8, value, " \t=") != null) return error.InvalidValue;
         self.term = try arena.dupeZ(u8, value);
+    } else if (std.mem.eql(u8, key, "env")) {
+        try self.putEnv(arena, value);
     } else if (std.mem.eql(u8, key, "command")) {
         self.command = try parseCommand(arena, value);
     } else if (std.mem.eql(u8, key, "pipe-command-output")) {
@@ -390,6 +396,28 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
     } else {
         return error.UnknownKey;
     }
+}
+
+fn putEnv(self: *Config, arena: std.mem.Allocator, value: []const u8) SetError!void {
+    const eq = std.mem.indexOfScalar(u8, value, '=') orelse return error.InvalidValue;
+    const name = std.mem.trimEnd(u8, value[0..eq], " \t");
+    if (name.len == 0 or std.mem.indexOfAny(u8, name, " \t") != null) return error.InvalidValue;
+    const entry = try std.fmt.allocPrintSentinel(arena, "{s}={s}", .{
+        name,
+        std.mem.trimStart(u8, value[eq + 1 ..], " \t"),
+    }, 0);
+    for (self.env.items) |*existing| {
+        if (std.mem.eql(u8, envName(existing.*), name)) {
+            existing.* = entry;
+            return;
+        }
+    }
+    try self.env.append(arena, entry);
+}
+
+/// The variable name of an `env` entry.
+pub fn envName(entry: []const u8) []const u8 {
+    return entry[0 .. std.mem.indexOfScalar(u8, entry, '=') orelse entry.len];
 }
 
 fn parseCopyOnSelect(value: []const u8) error{InvalidValue}!CopyOnSelect {
@@ -1029,6 +1057,25 @@ test "term defaults to monstar and rejects malformed names" {
     try std.testing.expectError(error.InvalidValue, config.set(arena, "term", "xterm 256color"));
     try std.testing.expectError(error.InvalidValue, config.set(arena, "term", "a=b"));
     try std.testing.expectEqualStrings("xterm-256color", config.term);
+}
+
+test "env entries replace by name and allow removal" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const config = parse(arena_state.allocator(),
+        \\env = EDITOR=nvim
+        \\env = PAGER = less -R
+        \\env = EDITOR=hx
+        \\env = LS_COLORS=
+        \\env = =broken
+        \\env = TWO WORDS=x
+        \\env = NO_EQUALS
+    );
+    try std.testing.expectEqual(@as(usize, 3), config.env.items.len);
+    try std.testing.expectEqualStrings("EDITOR=hx", config.env.items[0]);
+    try std.testing.expectEqualStrings("PAGER=less -R", config.env.items[1]);
+    try std.testing.expectEqualStrings("LS_COLORS=", config.env.items[2]);
+    try std.testing.expectEqualStrings("LS_COLORS", envName(config.env.items[2]));
 }
 
 test "title is unset by default and keeps spaces" {
