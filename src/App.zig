@@ -23,6 +23,7 @@ const DragIcon = @import("DragIcon.zig");
 const drag_preview = @import("drag_preview.zig");
 const Config = @import("Config.zig");
 const CommandNotification = @import("CommandNotification.zig");
+const CursorBlink = @import("CursorBlink.zig");
 const keybind = @import("keybind.zig");
 const Font = @import("Font.zig");
 const Keyboard = @import("Keyboard.zig");
@@ -234,6 +235,8 @@ scrollbar_fd: posix.fd_t,
 kitty_animation_fd: posix.fd_t,
 /// Idle scheduler for incremental cold scrollback compression.
 compression_fd: posix.fd_t,
+/// Blink phase of a focused cursor in DEC mode 12.
+cursor_blink: CursorBlink,
 compression_activity: u64,
 scrollbar_alpha: u8,
 scrollbar_fading: bool,
@@ -540,6 +543,7 @@ pub fn init(
         .colors = colors,
         .default_modes = .{ .grapheme_cluster = true },
         .default_cursor_style = config.cursor_style,
+        .default_cursor_blink = config.cursor_style_blink,
         // libghostty-vt defaults to a conservative 10MB, which rejects a
         // single fullscreen image on large displays (a 4K RGBA frame is
         // ~32MB). Default matches the Ghostty app (320MB).
@@ -675,6 +679,9 @@ pub fn init(
     const compression_fd = try createTimerFd();
     errdefer _ = std.os.linux.close(compression_fd);
 
+    var cursor_blink: CursorBlink = try .init();
+    errdefer cursor_blink.deinit();
+
     // Scope confirmation ran concurrently with the window setup above,
     // so this rarely waits; the child stays gated until its migration
     // is confirmed (or abandoned).
@@ -765,6 +772,7 @@ pub fn init(
         .scrollbar_fd = scrollbar_fd,
         .kitty_animation_fd = kitty_animation_fd,
         .compression_fd = compression_fd,
+        .cursor_blink = cursor_blink,
         .compression_activity = term.compressionActivity(),
         .scrollbar_alpha = 0,
         .scrollbar_fading = false,
@@ -1829,6 +1837,7 @@ pub fn deinit(self: *App) void {
     self.write_queue.deinit(self.alloc);
     if (self.pending_open_uri) |uri| self.alloc.free(uri);
     self.deinitDbus();
+    self.cursor_blink.deinit();
     _ = std.os.linux.close(self.compression_fd);
     _ = std.os.linux.close(self.kitty_animation_fd);
     _ = std.os.linux.close(self.scrollbar_fd);
@@ -1883,6 +1892,7 @@ pub fn run(self: *App) !void {
         .{ .fd = self.scrollbar_fd, .events = posix.POLL.IN, .revents = 0 },
         .{ .fd = self.kitty_animation_fd, .events = posix.POLL.IN, .revents = 0 },
         .{ .fd = self.compression_fd, .events = posix.POLL.IN, .revents = 0 },
+        .{ .fd = self.cursor_blink.fd, .events = posix.POLL.IN, .revents = 0 },
     } ++ [_]posix.pollfd{.{ .fd = -1, .events = posix.POLL.OUT, .revents = 0 }} ** Clipboard.max_outgoing_transfers;
     const wl_fd = &fds[0];
     const pipeline_fd = &fds[1];
@@ -1901,7 +1911,8 @@ pub fn run(self: *App) !void {
     const scrollbar_fd = &fds[14];
     const kitty_animation_fd = &fds[15];
     const compression_fd = &fds[16];
-    const outgoing_clipboard_fds = fds[17..][0..Clipboard.max_outgoing_transfers];
+    const cursor_blink_fd = &fds[17];
+    const outgoing_clipboard_fds = fds[18..][0..Clipboard.max_outgoing_transfers];
 
     while (self.window.running and (!self.child_exited or self.hold)) {
         self.expireDbusRequests();
@@ -2023,6 +2034,10 @@ pub fn run(self: *App) !void {
             self.fireScrollbackCompression();
         }
 
+        if (cursor_blink_fd.revents & posix.POLL.IN != 0) {
+            if (self.cursor_blink.fire()) self.needs_redraw = true;
+        }
+
         if (taskbar_progress_fd.revents & posix.POLL.IN != 0) {
             self.fireTaskbarProgressTimeout();
         }
@@ -2047,6 +2062,7 @@ pub fn run(self: *App) !void {
             self.readClipboardTransfer();
         }
 
+        self.syncCursorBlink();
         try self.redrawIfNeeded();
     }
 
@@ -2650,6 +2666,7 @@ fn applyConfig(self: *App, new_config: Config) !void {
     // Programs that chose a shape with DECSCUSR keep it until they select
     // the default again.
     self.term.setDefaultCursorStyle(new_config.cursor_style);
+    self.term.setDefaultCursorBlink(new_config.cursor_style_blink);
 
     if (new_config.image_storage_limit != self.config.image_storage_limit) {
         self.term.setKittyGraphicsSizeLimit(self.alloc, new_config.image_storage_limit);
@@ -5944,6 +5961,15 @@ test "keyboard removal cancels repeat and reports focus loss once" {
     try std.testing.expectEqualStrings("\x1b[O", buf[0..n]);
 }
 
+/// Blink only a visible, focused cursor in DEC mode 12; an unfocused cursor
+/// is drawn hollow and steady.
+fn syncCursorBlink(self: *App) void {
+    const should_blink = self.focused and
+        self.term.modes.get(.cursor_blinking) and
+        self.term.modes.get(.cursor_visible);
+    if (self.cursor_blink.sync(should_blink)) self.needs_redraw = true;
+}
+
 fn setFocus(self: *App, focused: bool) void {
     if (self.focused == focused) return;
     self.focused = focused;
@@ -6538,6 +6564,7 @@ fn onKey(self: *App, evdev_keycode: u32, action: vt.input.KeyAction) void {
     // and snaps a scrolled-back viewport to the bottom (ghostty's
     // selection-clear-on-typing behavior).
     if (wrote and action != .release and !event.key.modifier()) {
+        if (self.cursor_blink.reset()) self.needs_redraw = true;
         self.stopFling();
         self.resetSmoothScroll();
         self.clearSelection();
@@ -6573,6 +6600,8 @@ test "fixed shortcuts consume repeats and releases only with matching modifiers"
     app.fling_active = false;
     app.scroll_offset = 0;
     app.wheel_scroll_pixels = 0;
+    // Inactive blinking never touches its timer.
+    app.cursor_blink = .{ .fd = -1 };
     app.selection_gesture = .init;
     app.selection_autoscroll_fd = try createTimerFd();
     defer _ = linux.close(app.selection_autoscroll_fd);
@@ -7061,6 +7090,9 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
         old_cursor = self.render_state.cursor;
         self.render_state.overscan_request = .{ .below = @intFromBool(self.scroll_offset != 0) };
         try self.render_state.update(self.alloc, &self.term);
+        // The hidden blink phase is renderer-only; cursor row damage below
+        // compares visibility against the previous snapshot.
+        if (!self.cursor_blink.visible) self.render_state.cursor.visible = false;
         // Ghostty excludes overscan from cursor.viewport. Our cropped grid
         // can expose that row, so include its cursor in this render snapshot.
         if (self.render_state.cursor.viewport == null and self.render_state.overscan.below != 0) {

@@ -482,6 +482,7 @@ test {
     _ = @import("CellDamageTracker.zig");
     _ = @import("Clipboard.zig");
     _ = @import("CommandNotification.zig");
+    _ = @import("CursorBlink.zig");
     _ = @import("KittyClipboard.zig");
     _ = @import("KittyDrag.zig");
     _ = @import("drag_preview.zig");

@@ -248,6 +248,14 @@ The default is
 Programs may select another shape with DECSCUSR; the configured shape returns
 when a program requests the default shape or resets the terminal.
 Without keyboard focus the cursor is always drawn as a hollow block.
+.TP
+.BI cursor-style-blink " = true|false"
+Choose whether the default cursor blinks while the window has keyboard focus.
+The default is
+.BR false .
+Programs may still request a blinking or steady cursor with DECSCUSR or DEC
+private mode 12.
+Typing restarts the visible phase, and unfocused windows never blink.
 .SH STORAGE AND INPUT SETTINGS
 .TP
 .BI copy-highlight-duration " = milliseconds"

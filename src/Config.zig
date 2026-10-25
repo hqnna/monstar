@@ -150,6 +150,9 @@ background_opacity_cells: bool = false,
 /// Cursor shape used until a program selects one with DECSCUSR, and restored
 /// by DECSCUSR 0 or a terminal reset.
 cursor_style: vt.CursorStyle = .block,
+/// Whether the default cursor blinks while the window has keyboard focus.
+/// DECSCUSR and DEC mode 12 can still select blinking or a steady cursor.
+cursor_style_blink: bool = false,
 
 theme: ?Theme = null,
 light_theme_overrides: ?ThemeOverrides = null,
@@ -333,6 +336,8 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
             return error.InvalidValue;
     } else if (std.mem.eql(u8, key, "cursor-style")) {
         self.cursor_style = std.meta.stringToEnum(vt.CursorStyle, value) orelse return error.InvalidValue;
+    } else if (std.mem.eql(u8, key, "cursor-style-blink")) {
+        self.cursor_style_blink = try parseBool(value);
     } else if (std.mem.eql(u8, key, "theme")) {
         self.theme = try config_theme.parse(arena, value);
     } else if (std.mem.eql(u8, key, "background")) {
@@ -357,6 +362,12 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
     } else {
         return error.UnknownKey;
     }
+}
+
+fn parseBool(value: []const u8) error{InvalidValue}!bool {
+    if (std.mem.eql(u8, value, "true")) return true;
+    if (std.mem.eql(u8, value, "false")) return false;
+    return error.InvalidValue;
 }
 
 fn parseCommandFinishAction(value: []const u8) error{InvalidValue}!CommandFinishAction {
@@ -970,6 +981,15 @@ test "cursor style accepts Ghostty's shapes" {
     }
     try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "cursor-style", "beam"));
     try std.testing.expectEqual(vt.CursorStyle.block, config.cursor_style);
+}
+
+test "cursor blink defaults off and accepts booleans" {
+    var config: Config = .{};
+    try std.testing.expect(!config.cursor_style_blink);
+    try config.set(std.testing.allocator, "cursor-style-blink", "true");
+    try std.testing.expect(config.cursor_style_blink);
+    try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "cursor-style-blink", "yes"));
+    try std.testing.expect(config.cursor_style_blink);
 }
 
 test "palette accepts all indices and numeric bases" {
