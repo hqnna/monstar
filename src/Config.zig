@@ -271,6 +271,20 @@ pub fn resolveThemes(
 
 pub const SetError = error{ InvalidValue, UnknownKey, OutOfMemory };
 
+/// Settings read by monstar-qt from the same file. Terminals accept them
+/// without validation so a shared file or `-o` override does not warn here;
+/// the host reports invalid values.
+const host_keys = std.StaticStringMap(void).initComptime(.{
+    .{"focus-follows-mouse"},
+    .{"qt-tabs-location"},
+    .{"qt-terminal-command"},
+    .{"split-divider-color"},
+    .{"unfocused-split-fill"},
+    .{"unfocused-split-opacity"},
+    .{"window-inherit-working-directory"},
+    .{"window-show-tab-bar"},
+});
+
 pub fn applyOverride(self: *Config, arena: std.mem.Allocator, text: []const u8) SetError!void {
     const eq = std.mem.indexOfScalar(u8, text, '=') orelse return error.InvalidValue;
     const key = std.mem.trim(u8, text[0..eq], " \t");
@@ -280,6 +294,7 @@ pub fn applyOverride(self: *Config, arena: std.mem.Allocator, text: []const u8) 
 }
 
 pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []const u8) SetError!void {
+    if (host_keys.has(key)) return;
     if (std.mem.eql(u8, key, "app-id")) {
         self.app_id = try arena.dupeZ(u8, value);
     } else if (std.mem.eql(u8, key, "title")) {
@@ -898,6 +913,13 @@ test "command finish settings replace flags atomically and parse durations" {
         try std.testing.expectError(error.InvalidValue, config.set(alloc, "notify-on-command-finish-after", value));
         try std.testing.expectEqual(std.math.maxInt(u64), config.notify_on_command_finish_after);
     }
+}
+
+test "host settings are accepted and ignored" {
+    var config: Config = .{};
+    try config.applyOverride(std.testing.allocator, "qt-tabs-location=left");
+    try config.applyOverride(std.testing.allocator, "unfocused-split-opacity=0.5");
+    try std.testing.expectError(error.UnknownKey, config.applyOverride(std.testing.allocator, "qt-tab-location=left"));
 }
 
 test "unknown override is rejected" {
