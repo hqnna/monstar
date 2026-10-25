@@ -19,6 +19,19 @@
         pkgs.harfbuzz
         pkgs.libxkbcommon
       ];
+      # monstar-qt, the Qt tabs-and-splits frontend in qt/.
+      qtBuildInputs = pkgs: [
+        pkgs.qt6.qtbase
+        pkgs.qt6.qtdeclarative
+        pkgs.qt6.qtwayland
+        pkgs.wayland
+      ];
+      qtNativeBuildInputs = pkgs: [
+        pkgs.cmake
+        pkgs.ninja
+        pkgs.pkg-config
+        pkgs.wayland-scanner
+      ];
     in
     {
       packages = forAllSystems (system:
@@ -88,6 +101,17 @@
           default = pkgs.mkShell {
             nativeBuildInputs = [ pkgs.zig pkgs.pkg-config pkgs.ncurses ];
             buildInputs = buildInputs pkgs;
+          };
+
+          qt = pkgs.mkShell {
+            nativeBuildInputs = [ pkgs.zig pkgs.pkg-config pkgs.ncurses ] ++ qtNativeBuildInputs pkgs;
+            buildInputs = buildInputs pkgs ++ qtBuildInputs pkgs;
+            # Let an unwrapped development build find Qt's QML modules and
+            # platform plugins.
+            shellHook = ''
+              export QML_IMPORT_PATH="${pkgs.qt6.qtdeclarative}/${pkgs.qt6.qtbase.qtQmlPrefix}:${pkgs.qt6.qtwayland}/${pkgs.qt6.qtbase.qtQmlPrefix}"
+              export QT_PLUGIN_PATH="${pkgs.qt6.qtbase}/${pkgs.qt6.qtbase.qtPluginPrefix}:${pkgs.qt6.qtwayland}/${pkgs.qt6.qtbase.qtPluginPrefix}:${pkgs.qt6.qtdeclarative}/${pkgs.qt6.qtbase.qtPluginPrefix}"
+            '';
           };
         });
     };
