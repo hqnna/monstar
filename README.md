@@ -139,6 +139,8 @@ Other settings:
 
 - **app-id** — Wayland app-id and desktop-entry hint for desktop integration
   (default `dev.rockorager.monstar`).
+- **title** — Fixed window title; title escape sequences from programs are
+  ignored while it is set. `--title` only sets the initial title.
 - **window-width / window-height** — Initial terminal grid size in cells.
   Both must be set; values below 10 columns or 4 rows are raised to that
   minimum. `--window-size-chars` sets both; `--window-size-pixels` takes

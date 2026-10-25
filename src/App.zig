@@ -640,7 +640,7 @@ pub fn init(
     // space) while we respond to queries embedded in that output.
     setNonblocking(pty.master);
 
-    const window = try Window.create(alloc, config.app_id, options.title, startup_size.window);
+    const window = try Window.create(alloc, config.app_id, config.title orelse options.title, startup_size.window);
     errdefer window.destroy();
     window.setBufferAlpha(config.background_opacity < 255);
     window.setBackgroundBlur(config.background_blur and config.background_opacity < 255);
@@ -971,6 +971,7 @@ fn effectXtversion(_: *Handler) []const u8 {
 
 fn effectTitleChanged(handler: *Handler) void {
     const self = appFromHandler(handler);
+    if (self.config.title != null) return;
     const title = self.term.getTitle() orelse return;
     self.window.toplevel.setTitle(title.ptr);
 }
@@ -2662,6 +2663,12 @@ fn applyConfig(self: *App, new_config: Config) !void {
     self.window.setBufferAlpha(new_config.background_opacity < 255);
     self.window.setBackgroundBlur(new_config.background_blur and new_config.background_opacity < 255);
     self.window.toplevel.setAppId(new_config.app_id);
+    if (new_config.title) |title| {
+        self.window.toplevel.setTitle(title);
+    } else if (self.config.title != null) {
+        // A fixed title was removed: show the program's latest title.
+        self.window.toplevel.setTitle(if (self.term.getTitle()) |title| title.ptr else "monstar");
+    }
 
     // Programs that chose a shape with DECSCUSR keep it until they select
     // the default again.

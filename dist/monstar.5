@@ -97,6 +97,14 @@ standard input when
 is pressed.
 The default is unset.
 .TP
+.BI title " = string"
+Set a fixed window title.
+While set, title changes requested by programs with OSC 0 or OSC 2 are
+ignored.
+The
+.B \-\-title
+option only sets the initial title and is overridden by this setting.
+.TP
 .BI working-directory " = path"
 Start the child in
 .IR path ,

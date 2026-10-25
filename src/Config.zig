@@ -92,6 +92,9 @@ pub const MetricModifier = union(enum) {
 
 /// Wayland app-id and desktop-entry hint for desktop integration.
 app_id: [:0]const u8 = default_app_id,
+/// Fixed window title. When set, title escape sequences from programs are
+/// ignored.
+title: ?[:0]const u8 = null,
 font_family: [:0]const u8 = "monospace",
 /// Bare and `pt` values are typographic points; `px` values are logical
 /// pixels. Both apply the output's fractional scale during rasterization.
@@ -272,6 +275,8 @@ pub fn applyOverride(self: *Config, arena: std.mem.Allocator, text: []const u8) 
 pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []const u8) SetError!void {
     if (std.mem.eql(u8, key, "app-id")) {
         self.app_id = try arena.dupeZ(u8, value);
+    } else if (std.mem.eql(u8, key, "title")) {
+        self.title = try arena.dupeZ(u8, value);
     } else if (std.mem.eql(u8, key, "font-family")) {
         self.font_family = try arena.dupeZ(u8, value);
     } else if (std.mem.eql(u8, key, "font-size")) {
@@ -1005,6 +1010,14 @@ test "cursor style accepts Ghostty's shapes" {
     }
     try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "cursor-style", "beam"));
     try std.testing.expectEqual(vt.CursorStyle.block, config.cursor_style);
+}
+
+test "title is unset by default and keeps spaces" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    try std.testing.expectEqual(@as(?[:0]const u8, null), (Config{}).title);
+    const config = parse(arena_state.allocator(), "title = my  scratch pad ");
+    try std.testing.expectEqualStrings("my  scratch pad", config.title.?);
 }
 
 test "copy on select accepts Ghostty's values" {
