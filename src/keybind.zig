@@ -1,6 +1,8 @@
 //! Single-key Ghostty-style bindings. User entries override defaults by trigger;
 //! lookup prefers physical keys, then generated text, then unshifted text.
 //! `unbind` entries suppress defaults, including App's remaining fixed shortcuts.
+//! Tab and split actions belong to a hosting application such as monstar-qt;
+//! without one, their keys reach the terminal application unchanged.
 //!
 //! Trigger parsing and Unicode comparison adapted from Ghostty's
 //! src/input/Binding.zig at 8144ef4e73e70a4e9942fceb319819005f07fd37.
@@ -34,6 +36,76 @@ pub const Action = union(enum) {
     new_window,
     scroll_page_lines: i16,
     unbind,
+    host: HostAction,
+};
+
+pub const SplitDirection = enum { right, down, left, up };
+pub const SplitFocus = enum { previous, next, up, left, down, right };
+pub const ResizeDirection = enum { up, down, left, right };
+
+/// Window-management actions performed by a hosting application. The text
+/// form is Ghostty's action syntax and is what hosts receive.
+pub const HostAction = union(enum) {
+    new_tab,
+    close_tab,
+    previous_tab,
+    next_tab,
+    last_tab,
+    /// One-based tab index.
+    goto_tab: u16,
+    /// Relative tab movement; negative moves left.
+    move_tab: i16,
+    new_split: SplitDirection,
+    goto_split: SplitFocus,
+    toggle_split_zoom,
+    equalize_splits,
+    resize_split: struct { direction: ResizeDirection, amount: u16 },
+    close_surface,
+
+    pub fn parse(text: []const u8) error{InvalidValue}!HostAction {
+        const colon = std.mem.indexOfScalar(u8, text, ':');
+        const name = text[0 .. colon orelse text.len];
+        const param: ?[]const u8 = if (colon) |idx| text[idx + 1 ..] else null;
+        inline for (@typeInfo(HostAction).@"union".fields) |field| {
+            if (std.mem.eql(u8, name, field.name)) {
+                if (field.type == void) {
+                    if (param != null) return error.InvalidValue;
+                    return @unionInit(HostAction, field.name, {});
+                }
+                const value = param orelse return error.InvalidValue;
+                return @unionInit(HostAction, field.name, try parseParam(field.type, value));
+            }
+        }
+        return error.InvalidValue;
+    }
+
+    fn parseParam(comptime T: type, value: []const u8) error{InvalidValue}!T {
+        switch (@typeInfo(T)) {
+            .@"enum" => return std.meta.stringToEnum(T, value) orelse error.InvalidValue,
+            .int => return std.fmt.parseInt(T, value, 10) catch error.InvalidValue,
+            .@"struct" => {
+                const comma = std.mem.indexOfScalar(u8, value, ',') orelse return error.InvalidValue;
+                return .{
+                    .direction = try parseParam(ResizeDirection, value[0..comma]),
+                    .amount = try parseParam(u16, value[comma + 1 ..]),
+                };
+            },
+            else => @compileError("unsupported host action parameter"),
+        }
+    }
+
+    /// Write the action in Ghostty's syntax, which `parse` accepts.
+    pub fn format(self: HostAction, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.writeAll(@tagName(self));
+        switch (self) {
+            .goto_tab => |index| try writer.print(":{d}", .{index}),
+            .move_tab => |offset| try writer.print(":{d}", .{offset}),
+            .new_split => |direction| try writer.print(":{s}", .{@tagName(direction)}),
+            .goto_split => |focus| try writer.print(":{s}", .{@tagName(focus)}),
+            .resize_split => |resize| try writer.print(":{s},{d}", .{ @tagName(resize.direction), resize.amount }),
+            else => {},
+        }
+    }
 };
 
 pub const Binding = struct {
@@ -55,10 +127,49 @@ pub const Trigger = struct {
     }
 };
 
+const ctrl_shift: vt.input.KeyMods = .{ .ctrl = true, .shift = true };
+const ctrl_alt: vt.input.KeyMods = .{ .ctrl = true, .alt = true };
+const ctrl_super: vt.input.KeyMods = .{ .ctrl = true, .super = true };
+const ctrl_super_shift: vt.input.KeyMods = .{ .ctrl = true, .super = true, .shift = true };
+
+/// Ghostty's Linux defaults for the actions Monstar supports.
 const defaults = [_]Binding{
     .{ .trigger = .{ .key = .{ .physical = .arrow_up }, .mods = .{ .shift = true } }, .action = .{ .scroll_page_lines = -1 } },
     .{ .trigger = .{ .key = .{ .physical = .arrow_down }, .mods = .{ .shift = true } }, .action = .{ .scroll_page_lines = 1 } },
-    .{ .trigger = .{ .key = .{ .unicode = 'n' }, .mods = .{ .ctrl = true, .shift = true } }, .action = .new_window },
+    .{ .trigger = .{ .key = .{ .unicode = 'n' }, .mods = ctrl_shift }, .action = .new_window },
+    .{ .trigger = .{ .key = .{ .unicode = 't' }, .mods = ctrl_shift }, .action = .{ .host = .new_tab } },
+    .{ .trigger = .{ .key = .{ .unicode = 'w' }, .mods = ctrl_shift }, .action = .{ .host = .close_surface } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_left }, .mods = ctrl_shift }, .action = .{ .host = .previous_tab } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_right }, .mods = ctrl_shift }, .action = .{ .host = .next_tab } },
+    .{ .trigger = .{ .key = .{ .physical = .page_up }, .mods = .{ .ctrl = true } }, .action = .{ .host = .previous_tab } },
+    .{ .trigger = .{ .key = .{ .physical = .page_down }, .mods = .{ .ctrl = true } }, .action = .{ .host = .next_tab } },
+    .{ .trigger = .{ .key = .{ .physical = .tab }, .mods = ctrl_shift }, .action = .{ .host = .previous_tab } },
+    .{ .trigger = .{ .key = .{ .physical = .tab }, .mods = .{ .ctrl = true } }, .action = .{ .host = .next_tab } },
+    .{ .trigger = .{ .key = .{ .physical = .page_up }, .mods = ctrl_shift }, .action = .{ .host = .{ .move_tab = -1 } } },
+    .{ .trigger = .{ .key = .{ .physical = .page_down }, .mods = ctrl_shift }, .action = .{ .host = .{ .move_tab = 1 } } },
+    .{ .trigger = .{ .key = .{ .physical = .digit_1 }, .mods = .{ .alt = true } }, .action = .{ .host = .{ .goto_tab = 1 } } },
+    .{ .trigger = .{ .key = .{ .physical = .digit_2 }, .mods = .{ .alt = true } }, .action = .{ .host = .{ .goto_tab = 2 } } },
+    .{ .trigger = .{ .key = .{ .physical = .digit_3 }, .mods = .{ .alt = true } }, .action = .{ .host = .{ .goto_tab = 3 } } },
+    .{ .trigger = .{ .key = .{ .physical = .digit_4 }, .mods = .{ .alt = true } }, .action = .{ .host = .{ .goto_tab = 4 } } },
+    .{ .trigger = .{ .key = .{ .physical = .digit_5 }, .mods = .{ .alt = true } }, .action = .{ .host = .{ .goto_tab = 5 } } },
+    .{ .trigger = .{ .key = .{ .physical = .digit_6 }, .mods = .{ .alt = true } }, .action = .{ .host = .{ .goto_tab = 6 } } },
+    .{ .trigger = .{ .key = .{ .physical = .digit_7 }, .mods = .{ .alt = true } }, .action = .{ .host = .{ .goto_tab = 7 } } },
+    .{ .trigger = .{ .key = .{ .physical = .digit_8 }, .mods = .{ .alt = true } }, .action = .{ .host = .{ .goto_tab = 8 } } },
+    .{ .trigger = .{ .key = .{ .physical = .digit_9 }, .mods = .{ .alt = true } }, .action = .{ .host = .last_tab } },
+    .{ .trigger = .{ .key = .{ .unicode = 'o' }, .mods = ctrl_shift }, .action = .{ .host = .{ .new_split = .right } } },
+    .{ .trigger = .{ .key = .{ .unicode = 'e' }, .mods = ctrl_shift }, .action = .{ .host = .{ .new_split = .down } } },
+    .{ .trigger = .{ .key = .{ .physical = .bracket_left }, .mods = ctrl_super }, .action = .{ .host = .{ .goto_split = .previous } } },
+    .{ .trigger = .{ .key = .{ .physical = .bracket_right }, .mods = ctrl_super }, .action = .{ .host = .{ .goto_split = .next } } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_up }, .mods = ctrl_alt }, .action = .{ .host = .{ .goto_split = .up } } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_down }, .mods = ctrl_alt }, .action = .{ .host = .{ .goto_split = .down } } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_left }, .mods = ctrl_alt }, .action = .{ .host = .{ .goto_split = .left } } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_right }, .mods = ctrl_alt }, .action = .{ .host = .{ .goto_split = .right } } },
+    .{ .trigger = .{ .key = .{ .physical = .enter }, .mods = ctrl_shift }, .action = .{ .host = .toggle_split_zoom } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_up }, .mods = ctrl_super_shift }, .action = .{ .host = .{ .resize_split = .{ .direction = .up, .amount = 10 } } } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_down }, .mods = ctrl_super_shift }, .action = .{ .host = .{ .resize_split = .{ .direction = .down, .amount = 10 } } } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_left }, .mods = ctrl_super_shift }, .action = .{ .host = .{ .resize_split = .{ .direction = .left, .amount = 10 } } } },
+    .{ .trigger = .{ .key = .{ .physical = .arrow_right }, .mods = ctrl_super_shift }, .action = .{ .host = .{ .resize_split = .{ .direction = .right, .amount = 10 } } } },
+    .{ .trigger = .{ .key = .{ .physical = .equal }, .mods = ctrl_super_shift }, .action = .{ .host = .equalize_splits } },
 };
 
 /// Parse without allocating. Only single-key triggers and the actions in Action
@@ -84,7 +195,7 @@ pub fn parse(input: []const u8) error{InvalidValue}!Binding {
     else if (std.mem.startsWith(u8, action_text, "scroll_page_lines:"))
         .{ .scroll_page_lines = std.fmt.parseInt(i16, action_text["scroll_page_lines:".len..], 10) catch return error.InvalidValue }
     else
-        return error.InvalidValue;
+        .{ .host = try HostAction.parse(action_text) };
     return .{ .trigger = try parseTrigger(std.mem.trim(u8, input[0..eq], " \t")), .action = action };
 }
 
@@ -230,6 +341,42 @@ test "Ghostty single-key syntax and action parameters" {
         "a=unknown",           "a=unbind:1",                "a=new_window:1",             "ctrl+not-a-key=unbind",   "a>b=unbind",
         "global:a=unbind",     "chain=unbind",              "catch_all=unbind",           "\xff=unbind",
     }) |text| try std.testing.expectError(error.InvalidValue, parse(text));
+}
+
+test "host actions parse and format in Ghostty syntax" {
+    for ([_][]const u8{
+        "new_tab",            "close_tab",             "previous_tab",      "next_tab",
+        "last_tab",           "goto_tab:3",            "move_tab:-1",       "new_split:right",
+        "new_split:down",     "new_split:left",        "new_split:up",      "goto_split:previous",
+        "goto_split:next",    "goto_split:left",       "toggle_split_zoom", "equalize_splits",
+        "resize_split:up,10", "resize_split:right,25", "close_surface",
+    }) |text| {
+        var input_buf: [64]u8 = undefined;
+        const binding = try parse(try std.fmt.bufPrint(&input_buf, "ctrl+a={s}", .{text}));
+        var buf: [64]u8 = undefined;
+        var writer: std.Io.Writer = .fixed(&buf);
+        try binding.action.host.format(&writer);
+        try std.testing.expectEqualStrings(text, writer.buffered());
+    }
+    for ([_][]const u8{
+        "a=new_tab:1",          "a=goto_tab",          "a=goto_tab:x",          "a=goto_tab:-1",
+        "a=new_split",          "a=new_split:auto",    "a=goto_split:top",      "a=resize_split:up",
+        "a=resize_split:up,-1", "a=resize_split:in,1", "a=toggle_split_zoom:1", "a=move_tab:",
+    }) |text| try std.testing.expectError(error.InvalidValue, parse(text));
+}
+
+test "Ghostty's tab and split defaults resolve to host actions" {
+    const cases = [_]struct { event: vt.input.KeyEvent, action: HostAction }{
+        .{ .event = .{ .key = .key_t, .utf8 = "T", .unshifted_codepoint = 't', .mods = ctrl_shift }, .action = .new_tab },
+        .{ .event = .{ .key = .key_o, .unshifted_codepoint = 'o', .mods = ctrl_shift }, .action = .{ .new_split = .right } },
+        .{ .event = .{ .key = .key_e, .unshifted_codepoint = 'e', .mods = ctrl_shift }, .action = .{ .new_split = .down } },
+        .{ .event = .{ .key = .arrow_left, .mods = ctrl_alt }, .action = .{ .goto_split = .left } },
+        .{ .event = .{ .key = .digit_3, .unshifted_codepoint = '3', .mods = .{ .alt = true } }, .action = .{ .goto_tab = 3 } },
+        .{ .event = .{ .key = .tab, .mods = .{ .ctrl = true } }, .action = .next_tab },
+    };
+    for (cases) |case| {
+        try std.testing.expectEqualDeep(Action{ .host = case.action }, getEvent(&.{}, case.event).?);
+    }
 }
 
 test "repeatable bindings replace, unbind and restore without losing other triggers" {

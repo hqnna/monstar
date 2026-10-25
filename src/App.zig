@@ -6492,21 +6492,26 @@ const KeyBindingAction = union(enum) {
     top,
     bottom,
     new_window,
+    host: keybind.HostAction,
     passthrough,
 };
 
+/// `host_available` reports whether a hosting application can perform tab and
+/// split actions; without one their triggers behave as if unbound.
 fn keyBindingAction(
     config: *const Config,
     active_screen: vt.ScreenSet.Key,
     event: vt.input.KeyEvent,
+    host_available: bool,
 ) ?KeyBindingAction {
-    if (keybind.getEvent(config.keybinds.items, event)) |action| {
+    if (keybind.getEvent(config.keybinds.items, event)) |action| bound: {
         // Explicit bindings override fixed shortcuts even when unbound or
         // passed through to an alternate-screen application.
         return switch (action) {
             .unbind => .passthrough,
             .new_window => .new_window,
             .scroll_page_lines => |lines| if (active_screen == .primary) .{ .lines = lines } else .passthrough,
+            .host => |host_action| if (host_available) .{ .host = host_action } else break :bound,
         };
     }
     // Leave scrollback shortcuts to full-screen applications.
@@ -6523,7 +6528,7 @@ fn keyBindingAction(
 }
 
 fn handleScrollbackKey(self: *App, event: vt.input.KeyEvent, scroll: KeyBindingAction) void {
-    std.debug.assert(scroll != .passthrough and scroll != .new_window);
+    std.debug.assert(scroll != .passthrough and scroll != .new_window and scroll != .host);
     // Consume the matching release too, but move only on press/repeat.
     if (event.action == .release) return;
 
@@ -6536,11 +6541,23 @@ fn handleScrollbackKey(self: *App, event: vt.input.KeyEvent, scroll: KeyBindingA
         .page_down => self.term.screens.active.pages.scroll(.{ .delta_row = rows }),
         .top => self.term.screens.active.pages.scroll(.top),
         .bottom => self.term.screens.active.pages.scroll(.active),
-        .new_window, .passthrough => unreachable,
+        .new_window, .host, .passthrough => unreachable,
     }
     self.revealScrollbar();
     self.needs_redraw = true;
     self.syncHoveredLink(true);
+}
+
+/// Whether a hosting application, such as monstar-qt, manages this window's
+/// tabs and splits.
+fn hostAvailable(self: *const App) bool {
+    _ = self;
+    return false;
+}
+
+fn performHostAction(self: *App, action: keybind.HostAction) void {
+    _ = self;
+    _ = action;
 }
 
 fn onKey(self: *App, evdev_keycode: u32, action: vt.input.KeyAction) void {
@@ -6549,10 +6566,11 @@ fn onKey(self: *App, evdev_keycode: u32, action: vt.input.KeyAction) void {
 
     if (self.search != null) return self.handleSearchKey(event);
 
-    if (keyBindingAction(&self.config, self.term.screens.active_key, event)) |bound| switch (bound) {
+    if (keyBindingAction(&self.config, self.term.screens.active_key, event, self.hostAvailable())) |bound| switch (bound) {
         .passthrough => {},
         // Consume the matching repeats and releases too, like fixed shortcuts.
         .new_window => return if (action == .press) self.spawnNewWindow(),
+        .host => |host_action| return if (action == .press) self.performHostAction(host_action),
         else => return self.handleScrollbackKey(event, bound),
     } else if (!event.mods.alt and !event.mods.super) {
         // Fixed shortcuts fire once, but their matching repeats and releases
@@ -7850,58 +7868,58 @@ test "scrollback keys require supported modifiers on the primary screen" {
     const ctrl_shifted: vt.input.KeyMods = .{ .shift = true, .ctrl = true };
     try std.testing.expectEqual(
         KeyBindingAction{ .lines = -1 },
-        keyBindingAction(&config, .primary, .{ .key = .arrow_up, .mods = shifted }).?,
+        keyBindingAction(&config, .primary, .{ .key = .arrow_up, .mods = shifted }, false).?,
     );
     try std.testing.expectEqual(
         KeyBindingAction{ .lines = 1 },
-        keyBindingAction(&config, .primary, .{ .key = .arrow_down, .mods = shifted }).?,
+        keyBindingAction(&config, .primary, .{ .key = .arrow_down, .mods = shifted }, false).?,
     );
     try std.testing.expectEqual(
         KeyBindingAction.page_up,
-        keyBindingAction(&config, .primary, .{ .key = .page_up, .mods = shifted }).?,
+        keyBindingAction(&config, .primary, .{ .key = .page_up, .mods = shifted }, false).?,
     );
     try std.testing.expectEqual(
         KeyBindingAction.page_down,
-        keyBindingAction(&config, .primary, .{ .key = .page_down, .mods = shifted }).?,
+        keyBindingAction(&config, .primary, .{ .key = .page_down, .mods = shifted }, false).?,
     );
     try std.testing.expectEqual(
         KeyBindingAction.top,
-        keyBindingAction(&config, .primary, .{ .key = .home, .mods = shifted }).?,
+        keyBindingAction(&config, .primary, .{ .key = .home, .mods = shifted }, false).?,
     );
     try std.testing.expectEqual(
         KeyBindingAction.bottom,
-        keyBindingAction(&config, .primary, .{ .key = .end, .mods = shifted }).?,
+        keyBindingAction(&config, .primary, .{ .key = .end, .mods = shifted }, false).?,
     );
 
     try std.testing.expectEqual(
         KeyBindingAction.passthrough,
-        keyBindingAction(&config, .alternate, .{ .key = .arrow_up, .mods = shifted }).?,
+        keyBindingAction(&config, .alternate, .{ .key = .arrow_up, .mods = shifted }, false).?,
     );
     try std.testing.expectEqual(
         null,
-        keyBindingAction(&config, .primary, .{ .key = .arrow_up, .mods = ctrl_shifted }),
+        keyBindingAction(&config, .primary, .{ .key = .arrow_up, .mods = ctrl_shifted }, false),
     );
     try std.testing.expectEqual(
         null,
-        keyBindingAction(&config, .primary, .{ .key = .page_up }),
+        keyBindingAction(&config, .primary, .{ .key = .page_up }, false),
     );
     try std.testing.expectEqual(
         null,
         keyBindingAction(&config, .primary, .{
             .key = .page_up,
             .mods = ctrl_shifted,
-        }),
+        }, false),
     );
 
     try config.set(std.testing.allocator, "keybind", "ctrl+shift+up=scroll_page_lines:-5");
     try config.set(std.testing.allocator, "keybind", "shift+up=unbind");
     try std.testing.expectEqual(
         KeyBindingAction{ .lines = -5 },
-        keyBindingAction(&config, .primary, .{ .key = .arrow_up, .mods = ctrl_shifted }).?,
+        keyBindingAction(&config, .primary, .{ .key = .arrow_up, .mods = ctrl_shifted }, false).?,
     );
     try std.testing.expectEqual(
         KeyBindingAction.passthrough,
-        keyBindingAction(&config, .primary, .{ .key = .arrow_up, .mods = shifted }).?,
+        keyBindingAction(&config, .primary, .{ .key = .arrow_up, .mods = shifted }, false).?,
     );
 }
 
@@ -7918,12 +7936,12 @@ test "custom scrolling overrides fixed chords and passes through on the alternat
         for ([_]vt.input.KeyAction{ .press, .repeat, .release }) |action| {
             var event = case.event;
             event.action = action;
-            try std.testing.expectEqual(KeyBindingAction{ .lines = -3 }, keyBindingAction(&config, .primary, event).?);
-            try std.testing.expectEqual(KeyBindingAction.passthrough, keyBindingAction(&config, .alternate, event).?);
+            try std.testing.expectEqual(KeyBindingAction{ .lines = -3 }, keyBindingAction(&config, .primary, event, false).?);
+            try std.testing.expectEqual(KeyBindingAction.passthrough, keyBindingAction(&config, .alternate, event, false).?);
         }
     }
     try config.set(std.testing.allocator, "keybind", "ctrl+shift+c=unbind");
-    try std.testing.expectEqual(KeyBindingAction.passthrough, keyBindingAction(&config, .primary, cases[0].event).?);
+    try std.testing.expectEqual(KeyBindingAction.passthrough, keyBindingAction(&config, .primary, cases[0].event, false).?);
 }
 
 test "new_window defaults to ctrl+shift+n and can be rebound on either screen" {
@@ -7932,16 +7950,31 @@ test "new_window defaults to ctrl+shift+n and can be rebound on either screen" {
     const ctrl_shift_n: vt.input.KeyEvent = .{ .key = .key_n, .utf8 = "N", .unshifted_codepoint = 'n', .mods = .{ .ctrl = true, .shift = true } };
     const alt_n: vt.input.KeyEvent = .{ .key = .key_n, .utf8 = "n", .unshifted_codepoint = 'n', .mods = .{ .alt = true } };
     for ([_]vt.ScreenSet.Key{ .primary, .alternate }) |screen| {
-        try std.testing.expectEqual(KeyBindingAction.new_window, keyBindingAction(&config, screen, ctrl_shift_n).?);
+        try std.testing.expectEqual(KeyBindingAction.new_window, keyBindingAction(&config, screen, ctrl_shift_n, false).?);
     }
-    try std.testing.expectEqual(null, keyBindingAction(&config, .primary, alt_n));
+    try std.testing.expectEqual(null, keyBindingAction(&config, .primary, alt_n, false));
 
     try config.set(std.testing.allocator, "keybind", "alt+n=new_window");
     try config.set(std.testing.allocator, "keybind", "ctrl+shift+n=unbind");
     for ([_]vt.ScreenSet.Key{ .primary, .alternate }) |screen| {
-        try std.testing.expectEqual(KeyBindingAction.new_window, keyBindingAction(&config, screen, alt_n).?);
-        try std.testing.expectEqual(KeyBindingAction.passthrough, keyBindingAction(&config, screen, ctrl_shift_n).?);
+        try std.testing.expectEqual(KeyBindingAction.new_window, keyBindingAction(&config, screen, alt_n, false).?);
+        try std.testing.expectEqual(KeyBindingAction.passthrough, keyBindingAction(&config, screen, ctrl_shift_n, false).?);
     }
+}
+
+test "tab and split shortcuts need a host and otherwise reach the application" {
+    var config: Config = .{};
+    defer config.keybinds.deinit(std.testing.allocator);
+    const ctrl_shift_t: vt.input.KeyEvent = .{ .key = .key_t, .utf8 = "T", .unshifted_codepoint = 't', .mods = .{ .ctrl = true, .shift = true } };
+    try std.testing.expectEqual(null, keyBindingAction(&config, .primary, ctrl_shift_t, false));
+    try std.testing.expectEqual(KeyBindingAction{ .host = .new_tab }, keyBindingAction(&config, .primary, ctrl_shift_t, true).?);
+    try std.testing.expectEqual(KeyBindingAction{ .host = .new_tab }, keyBindingAction(&config, .alternate, ctrl_shift_t, true).?);
+
+    // An unhosted host action leaves the remaining fixed shortcuts in place.
+    try config.set(std.testing.allocator, "keybind", "shift+PageUp=new_tab");
+    const shift_page_up: vt.input.KeyEvent = .{ .key = .page_up, .mods = .{ .shift = true } };
+    try std.testing.expectEqual(KeyBindingAction.page_up, keyBindingAction(&config, .primary, shift_page_up, false).?);
+    try std.testing.expectEqual(KeyBindingAction{ .host = .new_tab }, keyBindingAction(&config, .primary, shift_page_up, true).?);
 }
 
 test "scrollback search scrolls a history match into the viewport" {

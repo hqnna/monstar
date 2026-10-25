@@ -233,9 +233,28 @@ Include Shift when it is held to produce punctuation, for example
 `keybind = ctrl+shift++=scroll_page_lines:-5` on a US keyboard.
 
 Configured bindings take precedence over fixed shortcuts below; `unbind`
-passes the key to the application instead. Only `scroll_page_lines`,
-`new_window`, and `unbind` are currently supported actions. Ghostty sequences, binding flags,
-and other actions are not yet supported. Search mode retains its own controls.
+passes the key to the application instead. Supported actions are
+`scroll_page_lines`, `new_window`, `unbind`, and these Ghostty tab and split
+actions:
+
+| Action | Default |
+| --- | --- |
+| `new_tab` | `Ctrl+Shift+T` |
+| `close_surface` | `Ctrl+Shift+W` |
+| `close_tab` | — |
+| `previous_tab` / `next_tab` | `Ctrl+Shift+Left` / `Ctrl+Shift+Right`, `Ctrl+PageUp` / `Ctrl+PageDown`, `Ctrl+Shift+Tab` / `Ctrl+Tab` |
+| `goto_tab:N` / `last_tab` | `Alt+1`…`Alt+8` / `Alt+9` |
+| `move_tab:N` | `Ctrl+Shift+PageUp` / `Ctrl+Shift+PageDown` (`-1` / `1`) |
+| `new_split:right\|down\|left\|up` | `Ctrl+Shift+O` (right), `Ctrl+Shift+E` (down) |
+| `goto_split:previous\|next\|up\|down\|left\|right` | `Ctrl+Super+[` / `Ctrl+Super+]`, `Ctrl+Alt+Arrow` |
+| `toggle_split_zoom` | `Ctrl+Shift+Enter` |
+| `resize_split:DIRECTION,PIXELS` | `Ctrl+Super+Shift+Arrow` (10 pixels) |
+| `equalize_splits` | `Ctrl+Super+Shift+=` |
+
+Tab and split actions are performed by a hosting application such as
+[monstar-qt](#qt-frontend). In a standalone window their triggers behave as if
+unbound and reach the application. Ghostty sequences, binding flags, and other
+actions are not yet supported. Search mode retains its own controls.
 
 | Shortcut | Action |
 | --- | --- |

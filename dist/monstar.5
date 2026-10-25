@@ -396,12 +396,33 @@ to bind Ctrl+Equals.
 .PP
 Configured bindings take priority over fixed shortcuts and apply immediately
 on configuration reload. Scroll actions pass through on the alternate screen.
-Search mode retains its own controls. Only
-.B scroll_page_lines
+Search mode retains its own controls. Supported actions are
+.BR scroll_page_lines ,
+.BR new_window ,
+.BR unbind ,
+and the Ghostty tab and split actions
+.BR new_tab ,
+.BR close_tab ,
+.BR close_surface ,
+.BR previous_tab ,
+.BR next_tab ,
+.BR last_tab ,
+.BI goto_tab: N\fR,\fP
+.BI move_tab: N\fR,\fP
+.BI new_split: right|down|left|up\fR,\fP
+.BI goto_split: previous|next|up|down|left|right\fR,\fP
+.BR toggle_split_zoom ,
+.BI resize_split: direction , pixels\fR,\fP
 and
-.B unbind
-actions are supported; sequences, binding flags and other Ghostty actions are
-not supported.
+.BR equalize_splits .
+Tab and split actions are performed by a hosting application such as
+.BR monstar-qt ;
+in a standalone window their triggers behave as if unbound.
+Their defaults follow Ghostty on Linux, for example
+.B ctrl+shift+t=new_tab
+and
+.BR ctrl+shift+o=new_split:right .
+Sequences, binding flags and other Ghostty actions are not supported.
 .TP
 .BI scrollback-limit " = bytes"
 Set the terminal page-storage limit, including the active screen.
