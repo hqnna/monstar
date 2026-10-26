@@ -8,6 +8,7 @@
 
 #include <QDir>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QSocketNotifier>
@@ -51,6 +52,7 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("monstar-qt"));
     app.setDesktopFileName(QStringLiteral("dev.rockorager.monstar"));
+    app.setWindowIcon(QIcon(QStringLiteral(":/monstar/dev.rockorager.monstar.svg")));
 
     QString configPath;
     QStringList overrides;

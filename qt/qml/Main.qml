@@ -24,14 +24,32 @@ MonstarCompositor {
             readonly property real pixelRatio: Screen.devicePixelRatio
             readonly property string location: root.host.config.tabsLocation
             readonly property bool verticalTabs: location === "left" || location === "right"
-            readonly property bool tabsShown: root.host.tabBarVisible
+            // window-decoration = client merges tabs into a drawn title bar;
+            // none removes the desktop's title bar without drawing one.
+            readonly property string decoration: root.host.config.windowDecoration
+            readonly property bool frameless: decoration === "client" || decoration === "none"
+            readonly property bool titleBarShown: decoration === "client"
+            readonly property bool tabsMerged: titleBarShown && location === "top"
+            readonly property bool tabsShown: root.host.tabBarVisible && !tabsMerged
+            readonly property real top: titleBarShown ? titleBar.height : 0
 
             width: 1024
             height: 720
             visible: true
+            flags: frameless ? (Qt.Window | Qt.FramelessWindowHint) : Qt.Window
             title: root.host.windowTitle
             color: root.host.config.translucentBackground
             Component.onCompleted: root.host.setWindow(appWindow)
+
+            TitleBar {
+                id: titleBar
+                host: root.host
+                window: appWindow
+                visible: appWindow.titleBarShown
+                showTabs: appWindow.tabsMerged
+                width: appWindow.width
+                height: implicitHeight
+            }
 
             TabStrip {
                 id: tabStrip
@@ -39,17 +57,17 @@ MonstarCompositor {
                 location: appWindow.location
                 visible: appWindow.tabsShown
                 x: appWindow.location === "right" ? appWindow.width - width : 0
-                y: appWindow.location === "bottom" ? appWindow.height - height : 0
+                y: appWindow.location === "bottom" ? appWindow.height - height : appWindow.top
                 width: appWindow.verticalTabs ? 200 : appWindow.width
-                height: appWindow.verticalTabs ? appWindow.height : implicitHeight
+                height: appWindow.verticalTabs ? appWindow.height - appWindow.top : implicitHeight
             }
 
             WaylandMouseTracker {
                 id: paneArea
                 x: appWindow.tabsShown && appWindow.location === "left" ? tabStrip.width : 0
-                y: appWindow.tabsShown && appWindow.location === "top" ? tabStrip.height : 0
+                y: appWindow.top + (appWindow.tabsShown && appWindow.location === "top" ? tabStrip.height : 0)
                 width: appWindow.width - (appWindow.tabsShown && appWindow.verticalTabs ? tabStrip.width : 0)
-                height: appWindow.height - (appWindow.tabsShown && !appWindow.verticalTabs ? tabStrip.height : 0)
+                height: appWindow.height - appWindow.top - (appWindow.tabsShown && !appWindow.verticalTabs ? tabStrip.height : 0)
                 windowSystemCursorEnabled: !clientCursor.visible
 
                 onWidthChanged: root.host.setPaneArea(width, height)
@@ -155,6 +173,31 @@ MonstarCompositor {
                     y: paneArea.mouseY
                     seat: root.defaultSeat
                     visible: surface !== null && paneArea.containsMouse
+                }
+            }
+
+            // Without the desktop's frame, the window edges resize it.
+            Repeater {
+                model: appWindow.frameless && appWindow.visibility !== Window.Maximized ? [
+                    { edges: Qt.TopEdge | Qt.LeftEdge, x: 0, y: 0, w: 8, h: 8, cursor: Qt.SizeFDiagCursor },
+                    { edges: Qt.TopEdge | Qt.RightEdge, x: -8, y: 0, w: 8, h: 8, cursor: Qt.SizeBDiagCursor },
+                    { edges: Qt.BottomEdge | Qt.LeftEdge, x: 0, y: -8, w: 8, h: 8, cursor: Qt.SizeBDiagCursor },
+                    { edges: Qt.BottomEdge | Qt.RightEdge, x: -8, y: -8, w: 8, h: 8, cursor: Qt.SizeFDiagCursor },
+                    { edges: Qt.TopEdge, x: 8, y: 0, w: -16, h: 4, cursor: Qt.SizeVerCursor },
+                    { edges: Qt.BottomEdge, x: 8, y: -4, w: -16, h: 4, cursor: Qt.SizeVerCursor },
+                    { edges: Qt.LeftEdge, x: 0, y: 8, w: 4, h: -16, cursor: Qt.SizeHorCursor },
+                    { edges: Qt.RightEdge, x: -4, y: 8, w: 4, h: -16, cursor: Qt.SizeHorCursor }
+                ] : []
+
+                // Negative offsets and sizes are relative to the far edge.
+                delegate: MouseArea {
+                    required property var modelData
+                    x: modelData.x < 0 ? appWindow.width + modelData.x : modelData.x
+                    y: modelData.y < 0 ? appWindow.height + modelData.y : modelData.y
+                    width: modelData.w < 0 ? appWindow.width + modelData.w : modelData.w
+                    height: modelData.h < 0 ? appWindow.height + modelData.h : modelData.h
+                    cursorShape: modelData.cursor
+                    onPressed: appWindow.startSystemResize(modelData.edges)
                 }
             }
         }

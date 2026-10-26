@@ -337,6 +337,12 @@ and `--` like `monstar`, and passes them on to its terminals. It runs the
 or `qt-terminal-command` chooses another. It reads these settings from the
 same configuration file:
 
+- **window-decoration** — `client` draws a combined title and tab bar
+  (icon, tabs, new tab, minimize, maximize, close); `none` drops the title
+  bar; `auto` or `server` keeps the desktop's (default `auto`). Drag empty
+  space in the bar to move the window, double-click it to maximize, and drag
+  the window edges to resize. Tabs merge into the bar when
+  `qt-tabs-location = top`.
 - **qt-tabs-location** — Tab strip edge: `top`, `bottom`, `left`, or `right`
   (default `top`).
 - **window-show-tab-bar** — `always`, `auto` (only with two or more tabs), or

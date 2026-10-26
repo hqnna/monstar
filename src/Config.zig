@@ -281,6 +281,7 @@ const host_keys = std.StaticStringMap(void).initComptime(.{
     .{"split-divider-color"},
     .{"unfocused-split-fill"},
     .{"unfocused-split-opacity"},
+    .{"window-decoration"},
     .{"window-inherit-working-directory"},
     .{"window-show-tab-bar"},
 });

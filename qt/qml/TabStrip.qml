@@ -10,6 +10,8 @@ Rectangle {
     // The window edge the strip is on: top, bottom, left, or right.
     property string location: "top"
     readonly property bool vertical: location === "left" || location === "right"
+    // The merged title bar draws its own new-tab button and background.
+    property bool showAddButton: true
 
     implicitHeight: 34
     color: tint(palette.window)
@@ -18,7 +20,8 @@ Rectangle {
     function tint(c) {
         return Qt.rgba(c.r, c.g, c.b, c.a * strip.host.config.backgroundOpacity)
     }
-    readonly property int tabExtent: vertical ? 30 : Math.min(220, Math.max(90, (width - addButton.width) / Math.max(1, strip.host.tabs.length)))
+    readonly property real addExtent: showAddButton ? (vertical ? addButton.height : addButton.width) : 0
+    readonly property int tabExtent: vertical ? 30 : Math.min(220, Math.max(90, (width - addExtent) / Math.max(1, strip.host.tabs.length)))
 
     SystemPalette {
         id: palette
@@ -29,8 +32,8 @@ Rectangle {
         id: list
         anchors.left: parent.left
         anchors.top: parent.top
-        width: strip.vertical ? parent.width : Math.min(contentWidth, parent.width - addButton.width)
-        height: strip.vertical ? Math.min(contentHeight, parent.height - addButton.height) : parent.height
+        width: strip.vertical ? parent.width : Math.min(contentWidth, parent.width - strip.addExtent)
+        height: strip.vertical ? Math.min(contentHeight, parent.height - strip.addExtent) : parent.height
         orientation: strip.vertical ? ListView.Vertical : ListView.Horizontal
         interactive: false
         clip: true
@@ -107,6 +110,7 @@ Rectangle {
 
     Rectangle {
         id: addButton
+        visible: strip.showAddButton
         width: strip.vertical ? strip.width : 34
         height: strip.vertical ? 30 : strip.height
         x: strip.vertical ? 0 : list.width

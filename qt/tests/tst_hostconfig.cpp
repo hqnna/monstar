@@ -19,6 +19,11 @@ private Q_SLOTS:
         QCOMPARE(config.unfocusedSplitFill(), config.background());
         QCOMPARE(config.backgroundOpacity(), 1.0);
         QVERIFY(config.backgroundBlur());
+        QCOMPARE(config.windowDecoration(), QStringLiteral("auto"));
+        QVERIFY(config.set(QStringLiteral("window-decoration"), QStringLiteral("client")));
+        QCOMPARE(config.windowDecoration(), QStringLiteral("client"));
+        QVERIFY(!config.set(QStringLiteral("window-decoration"), QStringLiteral("csd")));
+        QCOMPARE(config.windowDecoration(), QStringLiteral("client"));
     }
 
     void opacityAndBlurFollowMonstar()

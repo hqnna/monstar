@@ -63,6 +63,7 @@ void HostConfig::reset()
     m_splitDividerColor = QColor(0x3a, 0x3a, 0x3a);
     m_background = QColor();
     m_focusFollowsMouse = false;
+    m_windowDecoration = QStringLiteral("auto");
     m_backgroundOpacity = 1;
     m_backgroundBlur = true;
     m_inheritWorkingDirectory = true;
@@ -137,6 +138,12 @@ bool HostConfig::set(const QString &key, const QString &value)
         if (!color.isValid())
             return false;
         m_background = color;
+    } else if (key == u"window-decoration") {
+        static const QStringList modes{QStringLiteral("auto"), QStringLiteral("client"),
+                                       QStringLiteral("server"), QStringLiteral("none")};
+        if (!modes.contains(value))
+            return false;
+        m_windowDecoration = value;
     } else if (key == u"background-opacity") {
         bool ok = false;
         const qreal opacity = value.toDouble(&ok);

@@ -434,6 +434,24 @@ These settings are read by
 which shows terminals as tabs of splits.
 Terminals accept and ignore them.
 .TP
+.BI window-decoration " = auto|client|server|none"
+.B client
+replaces the desktop's title bar with one drawn by
+.BR monstar-qt ,
+holding the icon, the tabs when
+.B qt-tabs-location
+is
+.BR top ,
+a new-tab button, and minimize, maximize, and close buttons.
+.B none
+removes the title bar entirely.
+.B auto
+and
+.B server
+keep the desktop's title bar.
+The default is
+.BR auto .
+.TP
 .BI qt-tabs-location " = top|bottom|left|right"
 Choose the window edge for the tab strip.
 The default is

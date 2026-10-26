@@ -24,6 +24,8 @@
         pkgs.qt6.qtbase
         pkgs.qt6.qtdeclarative
         pkgs.qt6.qtwayland
+        # The title bar icon is an SVG.
+        pkgs.qt6.qtsvg
         pkgs.wayland
         pkgs.kdePackages.kwindowsystem
       ];
@@ -131,7 +133,7 @@
             # platform plugins.
             shellHook = ''
               export QML_IMPORT_PATH="${pkgs.qt6.qtdeclarative}/${pkgs.qt6.qtbase.qtQmlPrefix}:${pkgs.qt6.qtwayland}/${pkgs.qt6.qtbase.qtQmlPrefix}"
-              export QT_PLUGIN_PATH="${pkgs.qt6.qtbase}/${pkgs.qt6.qtbase.qtPluginPrefix}:${pkgs.qt6.qtwayland}/${pkgs.qt6.qtbase.qtPluginPrefix}:${pkgs.qt6.qtdeclarative}/${pkgs.qt6.qtbase.qtPluginPrefix}"
+              export QT_PLUGIN_PATH="${pkgs.qt6.qtsvg}/${pkgs.qt6.qtbase.qtPluginPrefix}:${pkgs.qt6.qtbase}/${pkgs.qt6.qtbase.qtPluginPrefix}:${pkgs.qt6.qtwayland}/${pkgs.qt6.qtbase.qtPluginPrefix}:${pkgs.qt6.qtdeclarative}/${pkgs.qt6.qtbase.qtPluginPrefix}"
             '';
           };
         });

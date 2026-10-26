@@ -28,6 +28,7 @@ qt_add_qml_module(monstar-qt
     QML_FILES
         qml/Main.qml
         qml/TabStrip.qml
+        qml/TitleBar.qml
     SOURCES
         src/HostConfig.cpp
         src/HostConfig.h
@@ -37,6 +38,12 @@ qt_add_qml_module(monstar-qt
         src/MonstarCompositor.h
         src/TerminalHost.cpp
         src/TerminalHost.h
+)
+
+qt_add_resources(monstar-qt "icons"
+    PREFIX "/monstar"
+    BASE ${CMAKE_CURRENT_SOURCE_DIR}/../dist
+    FILES ${CMAKE_CURRENT_SOURCE_DIR}/../dist/dev.rockorager.monstar.svg
 )
 
 qt_generate_wayland_protocol_server_sources(monstar-qt
