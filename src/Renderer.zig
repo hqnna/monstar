@@ -1766,13 +1766,17 @@ fn blitDecoration(
     const g = try font.decorationGlyph(self.alloc, kind);
     self.noteOverhang(@as(i32, font.baseline) - g.bearing_y, g.height);
     const baseline_y: i32 = @as(i32, y) * font.cell_height + font.baseline;
+    var x = @as(i32, cell_x) * font.cell_width + g.bearing_x;
+    // The bar straddles the cell's left edge, which in the first column is
+    // the grid edge: keep it inside the grid instead of clipping it away.
+    if (kind == .cursor_bar) x = @max(x, 0);
     blitGlyph(
         pixels,
         self.pixelStride(width),
         width,
         height,
         g,
-        @as(i32, cell_x) * font.cell_width + g.bearing_x,
+        x,
         baseline_y - g.bearing_y,
         color,
         false,
@@ -2754,6 +2758,37 @@ test "cursor colors resolve from cells unless OSC 12 is set" {
     try state.update(alloc, &term);
     try renderer.render(&state, pixels, width, height);
     try std.testing.expectEqual(argb(osc_cursor), pixels[center]);
+}
+
+test "a bar cursor in the first column stays inside the grid" {
+    const alloc = std.testing.allocator;
+
+    var term: vt.Terminal = try .init(std.testing.io, alloc, .{ .cols = 2, .rows = 1 });
+    defer term.deinit(alloc);
+    var stream = term.vtStream();
+    defer stream.deinit();
+    stream.nextSlice("\x1b[6 q");
+    var state: vt.RenderState = .empty;
+    defer state.deinit(alloc);
+    try state.update(alloc, &term);
+
+    var font: Font = try .init(alloc, "monospace", 16, null);
+    defer font.deinit(alloc);
+    var renderer: Renderer = try .init(alloc, &font, .{});
+    defer renderer.deinit();
+
+    const width = font.cell_width * 2;
+    const height = font.cell_height;
+    const pixels = try alloc.alloc(u32, @as(usize, width) * height);
+    defer alloc.free(pixels);
+    try renderer.render(&state, pixels, width, height);
+
+    const row = @as(usize, height / 2) * width;
+    var drawn = false;
+    for (pixels[row .. row + font.cell_width]) |pixel| {
+        if (pixel != argb(state.colors.background)) drawn = true;
+    }
+    try std.testing.expect(drawn);
 }
 
 test "focused block cursor keeps natural height in an expanded cell" {
