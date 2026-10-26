@@ -20,6 +20,12 @@ Rectangle {
     function tint(c) {
         return Qt.rgba(c.r, c.g, c.b, c.a * strip.host.config.backgroundOpacity)
     }
+    // A translucent wash of the text color: lightens dark themes and darkens
+    // light ones over whatever is behind the strip.
+    function shade(alpha) {
+        const c = palette.windowText
+        return Qt.rgba(c.r, c.g, c.b, alpha)
+    }
     readonly property real addExtent: showAddButton ? (vertical ? addButton.height : addButton.width) : 0
     readonly property int tabExtent: vertical ? 30 : Math.min(220, Math.max(90, (width - addExtent) / Math.max(1, strip.host.tabs.length)))
 
@@ -49,7 +55,8 @@ Rectangle {
 
             width: strip.vertical ? list.width : strip.tabExtent
             height: strip.vertical ? strip.tabExtent : list.height
-            color: strip.tint(modelData.active ? palette.base : (hover.hovered ? Qt.lighter(palette.window, 1.08) : palette.window))
+            // Tabs only shade the strip, so its translucency shows through.
+            color: modelData.active ? strip.shade(0.10) : (hover.hovered ? strip.shade(0.05) : "transparent")
 
             // Accent on the edge facing the terminals.
             Rectangle {
@@ -115,7 +122,7 @@ Rectangle {
         height: strip.vertical ? 30 : strip.height
         x: strip.vertical ? 0 : list.width
         y: strip.vertical ? list.height : 0
-        color: strip.tint(addHover.hovered ? Qt.lighter(palette.window, 1.08) : palette.window)
+        color: addHover.hovered ? strip.shade(0.05) : "transparent"
 
         Text {
             anchors.centerIn: parent
