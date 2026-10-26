@@ -111,12 +111,15 @@ pub const Discovery = struct {
     family: [:0]u8,
     size_px: f64,
     adjust_cell_height: ?Config.MetricModifier,
+    /// OpenType features applied to every shaping call, from `font-feature`.
+    features: []c.hb_feature_t,
     sort_sets: [style_count]*c.FcFontSet,
 
     fn init(
         family: [:0]const u8,
         size_px: f64,
         adjust_cell_height: ?Config.MetricModifier,
+        feature_names: []const [:0]const u8,
     ) Error!*Discovery {
         if (c.FcInit() != c.FcTrue) return error.FontLoadFailed;
 
@@ -136,12 +139,25 @@ pub const Discovery = struct {
         const alloc = std.heap.smp_allocator;
         const family_copy = try alloc.dupeZ(u8, family);
         errdefer alloc.free(family_copy);
+        // Config validates entries; skip any HarfBuzz still rejects.
+        var feature_count: usize = 0;
+        for (feature_names) |name| {
+            var feature: c.hb_feature_t = undefined;
+            if (c.hb_feature_from_string(name.ptr, @intCast(name.len), &feature) != 0) feature_count += 1;
+        }
+        const features = try alloc.alloc(c.hb_feature_t, feature_count);
+        errdefer alloc.free(features);
+        var index: usize = 0;
+        for (feature_names) |name| {
+            if (c.hb_feature_from_string(name.ptr, @intCast(name.len), &features[index]) != 0) index += 1;
+        }
         const self = try alloc.create(Discovery);
         self.* = .{
             .refs = .init(1),
             .family = family_copy,
             .size_px = size_px,
             .adjust_cell_height = adjust_cell_height,
+            .features = features,
             .sort_sets = sort_sets,
         };
         return self;
@@ -164,6 +180,7 @@ pub const Discovery = struct {
         for (self.sort_sets) |sort_set| c.FcFontSetDestroy(sort_set);
         const alloc = std.heap.smp_allocator;
         alloc.free(self.family);
+        alloc.free(self.features);
         alloc.destroy(self);
     }
 };
@@ -247,13 +264,13 @@ pub const Face = struct {
 
     /// Shape with identity transform even if a caller has temporarily moved
     /// the face. Restore that state afterward; raster phases are never metrics.
-    pub fn shape(self: *Face, buffer: *c.hb_buffer_t) void {
+    pub fn shape(self: *Face, buffer: *c.hb_buffer_t, features: []const c.hb_feature_t) void {
         var matrix: c.FT_Matrix = undefined;
         var delta: c.FT_Vector = undefined;
         c.FT_Get_Transform(self.ft_face, &matrix, &delta);
         c.FT_Set_Transform(self.ft_face, null, null);
         defer c.FT_Set_Transform(self.ft_face, &matrix, &delta);
-        c.hb_shape(self.hb_font, buffer, null, 0);
+        c.hb_shape(self.hb_font, buffer, features.ptr, @intCast(features.len));
     }
 
     /// Rasterize (or fetch from cache) the glyph with the given index. The
@@ -578,6 +595,17 @@ fn alphaBitmapOpaque(bitmap: []const u8) bool {
     return true;
 }
 
+test "font features are parsed once and invalid entries skipped" {
+    const alloc = std.testing.allocator;
+    var font: Font = try .initWithFeatures(alloc, "monospace", 16, null, &.{ "-calt", "not a feature!", "ss01=1" });
+    defer font.deinit(alloc);
+    const features = font.shapingFeatures();
+    try std.testing.expectEqual(@as(usize, 2), features.len);
+    try std.testing.expectEqual(c.hb_tag_from_string("calt", 4), features[0].tag);
+    try std.testing.expectEqual(@as(u32, 0), features[0].value);
+    try std.testing.expectEqual(@as(u32, 1), features[1].value);
+}
+
 test "classify fully opaque alpha bitmap" {
     try std.testing.expect(!alphaBitmapOpaque(&.{}));
     try std.testing.expect(alphaBitmapOpaque(&.{ 0xff, 0xff, 0xff }));
@@ -806,9 +834,28 @@ pub fn init(
 ) Error!Font {
     std.debug.assert(size_px > 0);
 
-    const discovery_data = try Discovery.init(family, size_px, adjust_cell_height);
+    return initWithFeatures(alloc, family, size_px, adjust_cell_height, &.{});
+}
+
+/// Like `init`, shaping with OpenType features such as `-calt` or `ss01`
+/// (HarfBuzz feature syntax). Invalid entries are ignored.
+pub fn initWithFeatures(
+    alloc: std.mem.Allocator,
+    family: [:0]const u8,
+    size_px: f64,
+    adjust_cell_height: ?Config.MetricModifier,
+    features: []const [:0]const u8,
+) Error!Font {
+    std.debug.assert(size_px > 0);
+
+    const discovery_data = try Discovery.init(family, size_px, adjust_cell_height, features);
     defer discovery_data.unref();
     return initWithDiscovery(alloc, discovery_data);
+}
+
+/// Features applied when shaping with this font.
+pub fn shapingFeatures(self: *const Font) []const c.hb_feature_t {
+    return self.discovery_data.features;
 }
 
 /// Build independent FreeType, HarfBuzz, and glyph-cache state from an

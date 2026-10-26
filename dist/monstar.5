@@ -199,6 +199,24 @@ Define a virtual family in the user's Fontconfig configuration to provide
 ordered primary, styled, and fallback fonts specific to Monstar, then select it
 with this setting.
 .TP
+.BI font-feature " = feature[,feature...]"
+Enable or disable OpenType features when shaping text, in HarfBuzz syntax:
+.B -calt
+or
+.B calt=0
+disables a feature,
+.B +ss01
+or
+.B ss01
+enables one, and
+.B cv01=2
+selects an alternate.
+Repeat the setting or separate features with commas.
+For example,
+.B font-feature = -calt, -liga
+disables programming ligatures.
+An entry with an invalid feature is ignored.
+.TP
 .BI font-size " = size[pt|px]"
 Set the font size.
 Bare values and

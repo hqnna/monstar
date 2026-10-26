@@ -89,6 +89,10 @@ mouse-scroll-multiplier = precision:1,discrete:3
 smooth-scrolling = true
 ```
 
+Set `font-feature` to turn OpenType features on or off, as in Ghostty; for
+example `font-feature = -calt` disables programming ligatures. Repeat it or
+use a comma-separated list (`font-feature = -calt, -liga, ss01`).
+
 Set `font-family` to choose the primary font; the default is Fontconfig's
 standard `monospace` family. Fontconfig normally selects matching bold and
 italic faces and supplies language and emoji fallbacks automatically. Monstar

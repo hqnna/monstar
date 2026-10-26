@@ -144,7 +144,7 @@ pub fn shapeRun(self: *TextShaper, face_index: u16, style: Font.FaceStyle) ![]Sh
     }
     c.hb_buffer_set_content_type(self.hb_buf, c.HB_BUFFER_CONTENT_TYPE_UNICODE);
     c.hb_buffer_guess_segment_properties(self.hb_buf);
-    face.shape(self.hb_buf);
+    face.shape(self.hb_buf, self.font.shapingFeatures());
 
     var glyph_count: c_uint = 0;
     const infos = c.hb_buffer_get_glyph_infos(self.hb_buf, &glyph_count);
@@ -268,7 +268,7 @@ fn shapeClusterWith(
     for (cps) |cp| c.hb_buffer_add(self.hb_buf, cp, cluster);
     c.hb_buffer_set_content_type(self.hb_buf, c.HB_BUFFER_CONTENT_TYPE_UNICODE);
     c.hb_buffer_guess_segment_properties(self.hb_buf);
-    face.shape(self.hb_buf);
+    face.shape(self.hb_buf, self.font.shapingFeatures());
 
     var glyph_count: c_uint = 0;
     const infos = c.hb_buffer_get_glyph_infos(self.hb_buf, &glyph_count);

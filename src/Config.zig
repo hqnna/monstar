@@ -10,6 +10,7 @@ const builtin = @import("builtin");
 const vt = @import("ghostty-vt");
 const config_theme = @import("config_theme.zig");
 const keybind = @import("keybind.zig");
+const c = @import("c");
 
 const log = std.log.scoped(.config);
 const baseline_dpi = 96.0;
@@ -99,6 +100,9 @@ font_family: [:0]const u8 = "monospace",
 /// Bare and `pt` values are typographic points; `px` values are logical
 /// pixels. Both apply the output's fractional scale during rasterization.
 font_size: FontSize = .{ .points = 12 },
+/// OpenType features for shaping in HarfBuzz syntax, such as `-calt` to
+/// disable contextual ligatures. Repeatable. Backed by the config arena.
+font_features: std.ArrayList([:0]const u8) = .empty,
 /// Signed physical-pixel or percentage adjustment to the font's natural cell
 /// height. Unset preserves the natural metrics.
 adjust_cell_height: ?MetricModifier = null,
@@ -310,6 +314,8 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
         self.font_family = try arena.dupeZ(u8, value);
     } else if (std.mem.eql(u8, key, "font-size")) {
         self.font_size = try parseFontSize(value);
+    } else if (std.mem.eql(u8, key, "font-feature")) {
+        try self.addFontFeatures(arena, value);
     } else if (std.mem.eql(u8, key, "adjust-cell-height")) {
         self.adjust_cell_height = try parseMetricModifier(value);
     } else if (std.mem.eql(u8, key, "window-padding-x")) {
@@ -425,6 +431,25 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
         self.palette[entry.index] = entry.color;
     } else {
         return error.UnknownKey;
+    }
+}
+
+/// Append comma-separated features, all or none: an invalid entry leaves
+/// the list unchanged.
+fn addFontFeatures(self: *Config, arena: std.mem.Allocator, value: []const u8) SetError!void {
+    var count: usize = 0;
+    var check = std.mem.splitScalar(u8, value, ',');
+    while (check.next()) |raw| {
+        const name = std.mem.trim(u8, raw, " \t");
+        var feature: c.hb_feature_t = undefined;
+        if (name.len == 0 or c.hb_feature_from_string(name.ptr, @intCast(name.len), &feature) == 0)
+            return error.InvalidValue;
+        count += 1;
+    }
+    try self.font_features.ensureUnusedCapacity(arena, count);
+    var it = std.mem.splitScalar(u8, value, ',');
+    while (it.next()) |raw| {
+        self.font_features.appendAssumeCapacity(try arena.dupeZ(u8, std.mem.trim(u8, raw, " \t")));
     }
 }
 
@@ -1094,6 +1119,23 @@ test "term defaults to monstar and rejects malformed names" {
     try std.testing.expectError(error.InvalidValue, config.set(arena, "term", "xterm 256color"));
     try std.testing.expectError(error.InvalidValue, config.set(arena, "term", "a=b"));
     try std.testing.expectEqualStrings("xterm-256color", config.term);
+}
+
+test "font features accept HarfBuzz syntax and comma lists" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const config = parse(arena_state.allocator(),
+        \\font-feature = -calt
+        \\font-feature = -liga, ss01
+        \\font-feature = cv01=2
+        \\font-feature = ok, not a feature!
+        \\font-feature = ,
+    );
+    try std.testing.expectEqual(@as(usize, 4), config.font_features.items.len);
+    try std.testing.expectEqualStrings("-calt", config.font_features.items[0]);
+    try std.testing.expectEqualStrings("-liga", config.font_features.items[1]);
+    try std.testing.expectEqualStrings("ss01", config.font_features.items[2]);
+    try std.testing.expectEqualStrings("cv01=2", config.font_features.items[3]);
 }
 
 test "env entries replace by name and allow removal" {
