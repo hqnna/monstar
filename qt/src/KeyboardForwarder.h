@@ -72,5 +72,6 @@ private:
     QList<wl_resource *> m_resources;
     // The terminal that had keyboard focus when the window lost it.
     QPointer<QWaylandSurface> m_restoreFocus;
+    bool m_windowFocused = true;
     QHash<wl_client *, wl_listener *> m_clientListeners;
 };

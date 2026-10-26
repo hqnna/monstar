@@ -86,12 +86,10 @@ const wl_keyboard_listener hostListener = {
     .keymap = [](void *data, wl_keyboard *, uint32_t format, int32_t fd, uint32_t size) {
         static_cast<KeyboardForwarder *>(data)->hostKeymap(format, fd, size);
     },
-    .enter = [](void *data, wl_keyboard *, uint32_t, wl_surface *, wl_array *) {
-        static_cast<KeyboardForwarder *>(data)->hostFocus(true);
-    },
-    .leave = [](void *data, wl_keyboard *, uint32_t, wl_surface *) {
-        static_cast<KeyboardForwarder *>(data)->hostFocus(false);
-    },
+    // Window focus follows Qt's view of it instead: compositors also send
+    // leave for surfaces that never had focus, which Qt rightly ignores.
+    .enter = [](void *, wl_keyboard *, uint32_t, wl_surface *, wl_array *) {},
+    .leave = [](void *, wl_keyboard *, uint32_t, wl_surface *) {},
     .key = [](void *data, wl_keyboard *, uint32_t, uint32_t time, uint32_t key, uint32_t state) {
         static_cast<KeyboardForwarder *>(data)->hostKey(time, key, state);
     },
@@ -176,6 +174,9 @@ KeyboardForwarder::KeyboardForwarder(QWaylandCompositor *compositor, QObject *pa
     connect(dispatcher, &QAbstractEventDispatcher::awake, this, &KeyboardForwarder::dispatchHostEvents);
     connect(dispatcher, &QAbstractEventDispatcher::aboutToBlock, this, &KeyboardForwarder::dispatchHostEvents);
     qGuiApp->installEventFilter(new KeyEventFilter(this));
+    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+        hostFocus(state == Qt::ApplicationActive);
+    });
 
     // Qt re-sends enter and its own modifiers when focus changes; follow
     // them with the desktop's.
@@ -301,6 +302,10 @@ QList<wl_resource *> KeyboardForwarder::focusedResources() const
 void KeyboardForwarder::hostFocus(bool focused)
 {
     QWaylandSeat *seat = m_compositor->defaultSeat();
+    qCDebug(lcKeyboard) << "window focus" << focused;
+    if (focused == m_windowFocused)
+        return;
+    m_windowFocused = focused;
     if (!focused) {
         // Keys held while focus leaves are never released to us. Take
         // keyboard focus from the terminal too, as a desktop compositor
@@ -311,7 +316,7 @@ void KeyboardForwarder::hostFocus(bool focused)
             seat->setKeyboardFocus(nullptr);
         return;
     }
-    // Focus may have moved to another pane while the window was inactive.
+    // Activating the window may already have focused a pane.
     if (m_restoreFocus && !seat->keyboardFocus())
         seat->setKeyboardFocus(m_restoreFocus);
     m_restoreFocus = nullptr;
