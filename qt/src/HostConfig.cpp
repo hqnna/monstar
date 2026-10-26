@@ -64,6 +64,7 @@ void HostConfig::reset()
     m_background = QColor();
     m_focusFollowsMouse = false;
     m_windowDecoration = QStringLiteral("auto");
+    m_windowCornerRadius = 8;
     m_backgroundOpacity = 1;
     m_backgroundBlur = true;
     m_inheritWorkingDirectory = true;
@@ -144,6 +145,12 @@ bool HostConfig::set(const QString &key, const QString &value)
         if (!modes.contains(value))
             return false;
         m_windowDecoration = value;
+    } else if (key == u"qt-window-corner-radius") {
+        bool ok = false;
+        const int radius = value.toInt(&ok);
+        if (!ok || radius < 0 || radius > 64)
+            return false;
+        m_windowCornerRadius = radius;
     } else if (key == u"background-opacity") {
         bool ok = false;
         const qreal opacity = value.toDouble(&ok);

@@ -144,6 +144,9 @@ public:
     // Ask the desktop to blur behind a translucent window, following the
     // configuration from now on.
     Q_INVOKABLE void setWindow(QWindow *window);
+    // The radius the window's corners are drawn with, so the blur follows
+    // them; 0 for square corners.
+    Q_INVOKABLE void setWindowCornerRadius(int radius);
 
     // Perform a Ghostty-syntax action for the terminal owning `surface`.
     void performAction(QWaylandSurface *surface, const QString &action, const QString &workingDirectory);
@@ -183,6 +186,7 @@ private:
     LaunchOptions m_options;
     MonstarCompositor *m_compositor = nullptr;
     QPointer<QWindow> m_window;
+    int m_cornerRadius = 0;
     PaneModel *m_panes;
     DividerModel *m_dividers;
     std::vector<std::unique_ptr<Tab>> m_tabs;

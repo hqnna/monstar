@@ -283,6 +283,7 @@ const host_keys = std.StaticStringMap(void).initComptime(.{
     .{"focus-follows-mouse"},
     .{"qt-tabs-location"},
     .{"qt-terminal-command"},
+    .{"qt-window-corner-radius"},
     .{"split-divider-color"},
     .{"unfocused-split-fill"},
     .{"unfocused-split-opacity"},

@@ -92,9 +92,9 @@ int main(int argc, char **argv)
 
     HostConfig config(configPath, overrides);
     TerminalHost host(&config, options);
-    // Translucency needs an alpha channel from the start; changing
-    // background-opacity from 1 takes effect in new windows.
-    if (config.backgroundOpacity() < 1)
+    // Translucency and drawn rounded corners need an alpha channel from the
+    // start; changing these settings takes effect in new windows.
+    if (config.backgroundOpacity() < 1 || (config.frameless() && config.windowCornerRadius() > 0))
         QQuickWindow::setDefaultAlphaBuffer(true);
 
     // `pkill -USR1 monstar` reloads Monstar's configuration, and matches

@@ -465,6 +465,16 @@ keep the desktop's title bar.
 The default is
 .BR auto .
 .TP
+.BI qt-window-corner-radius " = pixels"
+Round the corners of windows using
+.B window-decoration = client
+or
+.BR none ,
+from 0 to 64 logical pixels.
+Background blur follows the rounded shape.
+Zero keeps square corners; maximized windows are always square.
+The default is 8.
+.TP
 .BI qt-tabs-location " = top|bottom|left|right"
 Choose the window edge for the tab strip.
 The default is

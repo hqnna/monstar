@@ -348,7 +348,10 @@ same configuration file:
   bar; `auto` or `server` keeps the desktop's (default `auto`). Drag empty
   space in the bar to move the window, double-click it to maximize, and drag
   the window edges to resize. Tabs merge into the bar when
-  `qt-tabs-location = top`.
+  `qt-tabs-location = top`; a single tab shows as the bar's title.
+- **qt-window-corner-radius** — Corner radius in pixels of `client` and `none`
+  windows, `0`–`64`; the background blur follows the rounded shape. `0` keeps
+  square corners (default `8`). Maximized windows are square.
 - **qt-tabs-location** — Tab strip edge: `top`, `bottom`, `left`, or `right`
   (default `top`).
 - **window-show-tab-bar** — `always`, `auto` (only with two or more tabs), or

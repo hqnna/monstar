@@ -23,6 +23,7 @@ class HostConfig : public QObject
     Q_PROPERTY(QColor background READ background NOTIFY changed)
     Q_PROPERTY(bool focusFollowsMouse READ focusFollowsMouse NOTIFY changed)
     Q_PROPERTY(QString windowDecoration READ windowDecoration NOTIFY changed)
+    Q_PROPERTY(int windowCornerRadius READ windowCornerRadius NOTIFY changed)
     Q_PROPERTY(qreal backgroundOpacity READ backgroundOpacity NOTIFY changed)
     // The background color with backgroundOpacity applied.
     Q_PROPERTY(QColor translucentBackground READ translucentBackground NOTIFY changed)
@@ -57,6 +58,9 @@ public:
     // client draws a title bar holding the tabs, none draws no title bar,
     // and server (or auto) leaves the title bar to the desktop.
     QString windowDecoration() const { return m_windowDecoration; }
+    bool frameless() const { return m_windowDecoration == u"client" || m_windowDecoration == u"none"; }
+    // Corner radius of frameless windows in logical pixels; 0 is square.
+    int windowCornerRadius() const { return m_windowCornerRadius; }
     // Shared with the terminals, which draw their own translucent cells.
     qreal backgroundOpacity() const { return m_backgroundOpacity; }
     QColor translucentBackground() const
@@ -88,6 +92,7 @@ private:
     QColor m_background;
     bool m_focusFollowsMouse;
     QString m_windowDecoration;
+    int m_windowCornerRadius;
     qreal m_backgroundOpacity;
     bool m_backgroundBlur;
     bool m_inheritWorkingDirectory;

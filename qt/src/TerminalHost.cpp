@@ -16,6 +16,7 @@
 #include <QWaylandXdgSurface>
 #include <QWaylandXdgToplevel>
 
+#include <QRegion>
 #include <QWindow>
 
 #if MONSTAR_HAVE_KWINDOWSYSTEM
@@ -322,7 +323,43 @@ void TerminalHost::setCompositor(MonstarCompositor *compositor)
 void TerminalHost::setWindow(QWindow *window)
 {
     m_window = window;
+    // A rounded blur region must follow the window size.
+    connect(window, &QWindow::widthChanged, this, [this] {
+        if (m_cornerRadius > 0)
+            applyWindowEffects();
+    });
+    connect(window, &QWindow::heightChanged, this, [this] {
+        if (m_cornerRadius > 0)
+            applyWindowEffects();
+    });
     applyWindowEffects();
+}
+
+void TerminalHost::setWindowCornerRadius(int radius)
+{
+    if (radius == m_cornerRadius)
+        return;
+    m_cornerRadius = radius;
+    applyWindowEffects();
+}
+
+static QRegion roundedRegion(const QSize &size, int radius)
+{
+    QRegion region(QRect(QPoint(), size));
+    if (radius <= 0 || size.width() < 2 * radius || size.height() < 2 * radius)
+        return region;
+    const int d = 2 * radius;
+    const int right = size.width() - radius;
+    const int bottom = size.height() - radius;
+    // Cut each corner square, then add back the quarter of a circle.
+    for (const QPoint corner : {QPoint(0, 0), QPoint(right, 0), QPoint(0, bottom), QPoint(right, bottom)})
+        region -= QRegion(QRect(corner, QSize(radius, radius)));
+    region += QRegion(QRect(0, 0, d, d), QRegion::Ellipse) & QRegion(0, 0, radius, radius);
+    region += QRegion(QRect(size.width() - d, 0, d, d), QRegion::Ellipse) & QRegion(right, 0, radius, radius);
+    region += QRegion(QRect(0, size.height() - d, d, d), QRegion::Ellipse) & QRegion(0, bottom, radius, radius);
+    region += QRegion(QRect(size.width() - d, size.height() - d, d, d), QRegion::Ellipse)
+        & QRegion(right, bottom, radius, radius);
+    return region;
 }
 
 void TerminalHost::applyWindowEffects()
@@ -332,7 +369,10 @@ void TerminalHost::applyWindowEffects()
 #if MONSTAR_HAVE_KWINDOWSYSTEM
     // KWindowEffects speaks KWin's blur protocol; other desktops ignore it.
     const bool blur = m_config->backgroundBlur() && m_config->backgroundOpacity() < 1;
-    KWindowEffects::enableBlurBehind(m_window, blur);
+    // An empty region blurs the whole window; rounded corners need a
+    // matching region so the blur does not show past them.
+    const QRegion region = m_cornerRadius > 0 ? roundedRegion(m_window->size(), m_cornerRadius) : QRegion();
+    KWindowEffects::enableBlurBehind(m_window, blur, region);
 #endif
 }
 

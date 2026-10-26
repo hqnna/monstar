@@ -23,6 +23,10 @@ private Q_SLOTS:
         QVERIFY(config.set(QStringLiteral("window-decoration"), QStringLiteral("client")));
         QCOMPARE(config.windowDecoration(), QStringLiteral("client"));
         QVERIFY(!config.set(QStringLiteral("window-decoration"), QStringLiteral("csd")));
+        QCOMPARE(config.windowCornerRadius(), 8);
+        QVERIFY(config.set(QStringLiteral("qt-window-corner-radius"), QStringLiteral("0")));
+        QCOMPARE(config.windowCornerRadius(), 0);
+        QVERIFY(!config.set(QStringLiteral("qt-window-corner-radius"), QStringLiteral("-2")));
         QCOMPARE(config.windowDecoration(), QStringLiteral("client"));
     }
 
