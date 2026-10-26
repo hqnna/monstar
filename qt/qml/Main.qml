@@ -42,12 +42,25 @@ MonstarCompositor {
 
             width: 1024
             height: 720
-            visible: true
+            // With window-width and window-height, appear once the window
+            // fits the first terminal.
+            visible: !root.host.awaitingInitialSize
             flags: frameless ? (Qt.Window | Qt.FramelessWindowHint) : Qt.Window
             title: root.host.windowTitle
             color: rounded ? "transparent" : root.host.config.translucentBackground
             Component.onCompleted: root.host.setWindow(appWindow)
             onRoundedChanged: root.host.setWindowCornerRadius(rounded ? root.host.config.windowCornerRadius : 0)
+
+            Connections {
+                target: root.host
+                function onInitialSizeChosen(paneSize) {
+                    if (paneSize.width <= 0 || paneSize.height <= 0)
+                        return
+                    // Everything around the panes keeps its size.
+                    appWindow.width = paneSize.width + appWindow.width - paneArea.width
+                    appWindow.height = paneSize.height + appWindow.height - paneArea.height
+                }
+            }
 
             Item {
                 id: content

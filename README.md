@@ -347,6 +347,8 @@ and `--` like `monstar`, and passes them on to its terminals. It runs the
 or `qt-terminal-command` chooses another. It reads these settings from the
 same configuration file:
 
+- **window-width**, **window-height** — As in `monstar`: the first terminal
+  starts with this grid, and the window fits it plus the title and tab bars.
 - **window-decoration** — `client` draws a combined title and tab bar
   (icon, tabs, new tab, minimize, maximize, close); `none` drops the title
   bar; `auto` or `server` keeps the desktop's (default `auto`). Drag empty

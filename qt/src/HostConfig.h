@@ -61,6 +61,9 @@ public:
     bool frameless() const { return m_windowDecoration == u"client" || m_windowDecoration == u"none"; }
     // Corner radius of frameless windows in logical pixels; 0 is square.
     int windowCornerRadius() const { return m_windowCornerRadius; }
+    // window-width and window-height set the first terminal's grid; the
+    // window then fits it. The terminal applies both or neither.
+    bool hasInitialGrid() const { return m_windowWidth > 0 && m_windowHeight > 0; }
     // Shared with the terminals, which draw their own translucent cells.
     qreal backgroundOpacity() const { return m_backgroundOpacity; }
     QColor translucentBackground() const
@@ -93,6 +96,8 @@ private:
     bool m_focusFollowsMouse;
     QString m_windowDecoration;
     int m_windowCornerRadius;
+    int m_windowWidth;
+    int m_windowHeight;
     qreal m_backgroundOpacity;
     bool m_backgroundBlur;
     bool m_inheritWorkingDirectory;

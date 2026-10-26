@@ -11,6 +11,7 @@
 #include <QLoggingCategory>
 #include <QProcess>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QWaylandClient>
 #include <QWaylandSurface>
 #include <QWaylandXdgSurface>
@@ -222,7 +223,11 @@ TerminalHost::TerminalHost(HostConfig *config, LaunchOptions options, QObject *p
     , m_options(std::move(options))
     , m_panes(new PaneModel(this))
     , m_dividers(new DividerModel(this))
+    , m_awaitingInitialSize(config->hasInitialGrid())
 {
+    // A terminal that never draws must not leave the window hidden.
+    if (m_awaitingInitialSize)
+        QTimer::singleShot(3000, this, [this] { finishInitialSize({}); });
     connect(m_config, &HostConfig::changed, this, [this] {
         relayout();
         applyWindowEffects();
@@ -652,7 +657,18 @@ void TerminalHost::attachToplevel(QWaylandXdgToplevel *toplevel, QWaylandXdgSurf
     connect(toplevel, &QWaylandXdgToplevel::titleChanged, this, &TerminalHost::tabsChanged);
     connect(xdgSurface, &QObject::destroyed, this, [this, id] { removePane(id); });
     pane->configured = {};
-    configure(pane);
+    if (m_awaitingInitialSize) {
+        // Let the first terminal size itself from window-width and
+        // window-height, then fit the window around it.
+        QWaylandSurface *surface = xdgSurface->surface();
+        connect(surface, &QWaylandSurface::destinationSizeChanged, this, [this, surface] {
+            if (m_awaitingInitialSize && !surface->destinationSize().isEmpty())
+                finishInitialSize(surface->destinationSize());
+        });
+        toplevel->sendConfigure(QSize(0, 0), QList<QWaylandXdgToplevel::State>{QWaylandXdgToplevel::ActivatedState});
+    } else {
+        configure(pane);
+    }
     m_panes->refresh(pane);
     Q_EMIT tabsChanged();
     const Tab *tab = findTab(pane->tab);
@@ -660,9 +676,21 @@ void TerminalHost::attachToplevel(QWaylandXdgToplevel *toplevel, QWaylandXdgSurf
         Q_EMIT focusRequested(id);
 }
 
+void TerminalHost::finishInitialSize(QSizeF paneSize)
+{
+    if (!m_awaitingInitialSize)
+        return;
+    m_awaitingInitialSize = false;
+    qCDebug(lcHost) << "first terminal size" << paneSize;
+    Q_EMIT initialSizeChosen(paneSize);
+    // The window may keep its size, so configure the panes regardless.
+    relayout();
+}
+
 void TerminalHost::configure(Pane *pane)
 {
-    if (!pane->toplevel)
+    // Until the first terminal has chosen its size, sizes come from it.
+    if (!pane->toplevel || m_awaitingInitialSize)
         return;
     const QSize size = pane->rect.size().toSize();
     if (size.isEmpty() || size == pane->configured)

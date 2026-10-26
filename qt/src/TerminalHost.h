@@ -117,6 +117,9 @@ class TerminalHost : public QObject
     Q_PROPERTY(QString windowTitle READ windowTitle NOTIFY tabsChanged)
     Q_PROPERTY(bool tabBarVisible READ tabBarVisible NOTIFY tabsChanged)
     Q_PROPERTY(qreal dividerWidth READ dividerWidth CONSTANT)
+    // True until the first terminal has chosen its size from window-width
+    // and window-height; the window stays hidden meanwhile.
+    Q_PROPERTY(bool awaitingInitialSize READ awaitingInitialSize NOTIFY initialSizeChosen)
 
 public:
     TerminalHost(HostConfig *config, LaunchOptions options, QObject *parent = nullptr);
@@ -129,6 +132,7 @@ public:
     int currentTab() const { return m_currentTab; }
     QString windowTitle() const;
     bool tabBarVisible() const;
+    bool awaitingInitialSize() const { return m_awaitingInitialSize; }
     qreal dividerWidth() const { return 1; }
 
     // Start the first tab once the compositor exists.
@@ -155,6 +159,9 @@ Q_SIGNALS:
     void tabsChanged();
     // Give keyboard focus to this pane's surface item.
     void focusRequested(int paneId);
+    // The first terminal's chosen size in logical pixels, or an empty size
+    // when it did not choose one in time.
+    void initialSizeChosen(QSizeF paneSize);
 
 private:
     struct Tab {
@@ -180,12 +187,14 @@ private:
 
     void relayout();
     void configure(Pane *pane);
+    void finishInitialSize(QSizeF paneSize);
     void applyWindowEffects();
 
     HostConfig *m_config;
     LaunchOptions m_options;
     MonstarCompositor *m_compositor = nullptr;
     QPointer<QWindow> m_window;
+    bool m_awaitingInitialSize = false;
     int m_cornerRadius = 0;
     PaneModel *m_panes;
     DividerModel *m_dividers;
