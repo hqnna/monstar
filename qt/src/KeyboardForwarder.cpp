@@ -86,8 +86,12 @@ const wl_keyboard_listener hostListener = {
     .keymap = [](void *data, wl_keyboard *, uint32_t format, int32_t fd, uint32_t size) {
         static_cast<KeyboardForwarder *>(data)->hostKeymap(format, fd, size);
     },
-    .enter = [](void *, wl_keyboard *, uint32_t, wl_surface *, wl_array *) {},
-    .leave = [](void *, wl_keyboard *, uint32_t, wl_surface *) {},
+    .enter = [](void *data, wl_keyboard *, uint32_t, wl_surface *, wl_array *) {
+        static_cast<KeyboardForwarder *>(data)->hostFocus(true);
+    },
+    .leave = [](void *data, wl_keyboard *, uint32_t, wl_surface *) {
+        static_cast<KeyboardForwarder *>(data)->hostFocus(false);
+    },
     .key = [](void *data, wl_keyboard *, uint32_t, uint32_t time, uint32_t key, uint32_t state) {
         static_cast<KeyboardForwarder *>(data)->hostKey(time, key, state);
     },
@@ -292,6 +296,25 @@ QList<wl_resource *> KeyboardForwarder::focusedResources() const
             result.append(resource);
     }
     return result;
+}
+
+void KeyboardForwarder::hostFocus(bool focused)
+{
+    QWaylandSeat *seat = m_compositor->defaultSeat();
+    if (!focused) {
+        // Keys held while focus leaves are never released to us. Take
+        // keyboard focus from the terminal too, as a desktop compositor
+        // would: it stops key repeat, shows an unfocused cursor, and sends
+        // focus-out reports to programs that asked for them.
+        m_restoreFocus = seat->keyboardFocus();
+        if (m_restoreFocus)
+            seat->setKeyboardFocus(nullptr);
+        return;
+    }
+    // Focus may have moved to another pane while the window was inactive.
+    if (m_restoreFocus && !seat->keyboardFocus())
+        seat->setKeyboardFocus(m_restoreFocus);
+    m_restoreFocus = nullptr;
 }
 
 void KeyboardForwarder::hostKeymap(uint32_t format, int fd, uint32_t size)

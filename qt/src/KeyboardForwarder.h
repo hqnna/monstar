@@ -10,6 +10,8 @@
 #include <QHash>
 #include <QList>
 #include <QObject>
+#include <QPointer>
+#include <QWaylandSurface>
 
 struct wl_client;
 struct wl_display;
@@ -38,6 +40,7 @@ public:
     // Callbacks from the desktop's registry, seat, and keyboard.
     void hostSeat(uint32_t name, uint32_t version);
     void hostCapabilities(uint32_t capabilities);
+    void hostFocus(bool focused);
     void hostKeymap(uint32_t format, int fd, uint32_t size);
     void hostKey(uint32_t time, uint32_t key, uint32_t state);
     void hostModifiers(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group);
@@ -67,5 +70,7 @@ private:
     int32_t m_repeatRate = 25;
     int32_t m_repeatDelay = 600;
     QList<wl_resource *> m_resources;
+    // The terminal that had keyboard focus when the window lost it.
+    QPointer<QWaylandSurface> m_restoreFocus;
     QHash<wl_client *, wl_listener *> m_clientListeners;
 };
