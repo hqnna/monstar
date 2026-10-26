@@ -65,7 +65,14 @@ else()
     message(STATUS "KF6WindowSystem not found: background-blur is unavailable in monstar-qt")
 endif()
 
+include(GNUInstallDirs)
 install(TARGETS monstar-qt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../dist/dev.rockorager.monstar-qt.desktop
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+# Under its own name, so installing monstar alongside does not collide.
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/../dist/dev.rockorager.monstar.svg
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+    RENAME dev.rockorager.monstar-qt.svg)
 
 include(CTest)
 if(BUILD_TESTING)

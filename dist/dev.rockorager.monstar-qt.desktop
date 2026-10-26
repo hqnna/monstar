@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Monstar (tabs)
+GenericName=Terminal
+Comment=Monstar terminals in tabs and splits
+Icon=dev.rockorager.monstar-qt
+Exec=monstar-qt
+Terminal=false
+StartupNotify=true
+StartupWMClass=dev.rockorager.monstar-qt
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;terminal;tabs;
+X-TerminalArgExec=-e
+X-TerminalArgDir=--working-directory=

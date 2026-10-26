@@ -51,7 +51,8 @@ int main(int argc, char **argv)
 {
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("monstar-qt"));
-    app.setDesktopFileName(QStringLiteral("dev.rockorager.monstar"));
+    // Match the launcher entry so the desktop shows its icon and groups windows.
+    app.setDesktopFileName(QStringLiteral("dev.rockorager.monstar-qt"));
     app.setWindowIcon(QIcon(QStringLiteral(":/monstar/dev.rockorager.monstar.svg")));
 
     QString configPath;
