@@ -163,6 +163,11 @@ cursor_style: vt.CursorStyle = .block,
 /// Whether the default cursor blinks while the window has keyboard focus.
 /// DECSCUSR and DEC mode 12 can still select blinking or a steady cursor.
 cursor_style_blink: bool = false,
+/// Neovide-style cursor animation length in milliseconds; 0 disables it.
+cursor_trail: u32 = 0,
+/// How much sooner the corners leading a cursor motion arrive than the
+/// trailing ones, from 0 (the cursor slides without stretching) to 1.
+cursor_trail_size: f64 = 0.8,
 /// Hide the mouse pointer when typing produces terminal input; moving or
 /// clicking the pointer shows it again.
 mouse_hide_while_typing: bool = false,
@@ -382,6 +387,14 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
         self.cursor_style = std.meta.stringToEnum(vt.CursorStyle, value) orelse return error.InvalidValue;
     } else if (std.mem.eql(u8, key, "cursor-style-blink")) {
         self.cursor_style_blink = try parseBool(value);
+    } else if (std.mem.eql(u8, key, "cursor-trail")) {
+        const ms = std.fmt.parseInt(u32, value, 10) catch return error.InvalidValue;
+        if (ms > 2000) return error.InvalidValue;
+        self.cursor_trail = ms;
+    } else if (std.mem.eql(u8, key, "cursor-trail-size")) {
+        const size = std.fmt.parseFloat(f64, value) catch return error.InvalidValue;
+        if (!std.math.isFinite(size) or size < 0 or size > 1) return error.InvalidValue;
+        self.cursor_trail_size = size;
     } else if (std.mem.eql(u8, key, "mouse-hide-while-typing")) {
         self.mouse_hide_while_typing = try parseBool(value);
     } else if (std.mem.eql(u8, key, "copy-on-select")) {
@@ -1138,6 +1151,22 @@ test "mouse hiding while typing defaults off and accepts booleans" {
     try std.testing.expect(config.mouse_hide_while_typing);
     try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, "mouse-hide-while-typing", "1"));
     try std.testing.expect(config.mouse_hide_while_typing);
+}
+
+test "cursor trail is off by default and validates its ranges" {
+    var config: Config = .{};
+    try std.testing.expectEqual(@as(u32, 0), config.cursor_trail);
+    try std.testing.expectEqual(@as(f64, 0.8), config.cursor_trail_size);
+    try config.set(std.testing.allocator, "cursor-trail", "150");
+    try config.set(std.testing.allocator, "cursor-trail-size", "1");
+    try std.testing.expectEqual(@as(u32, 150), config.cursor_trail);
+    try std.testing.expectEqual(@as(f64, 1), config.cursor_trail_size);
+    for ([_][2][]const u8{
+        .{ "cursor-trail", "-1" },       .{ "cursor-trail", "2001" },      .{ "cursor-trail", "1.5" },
+        .{ "cursor-trail-size", "1.1" }, .{ "cursor-trail-size", "-0.5" }, .{ "cursor-trail-size", "nan" },
+    }) |case| try std.testing.expectError(error.InvalidValue, config.set(std.testing.allocator, case[0], case[1]));
+    try std.testing.expectEqual(@as(u32, 150), config.cursor_trail);
+    try std.testing.expectEqual(@as(f64, 1), config.cursor_trail_size);
 }
 
 test "cursor blink defaults off and accepts booleans" {

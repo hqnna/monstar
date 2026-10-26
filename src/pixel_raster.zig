@@ -120,6 +120,84 @@ pub fn blendCapsule(
     }
 }
 
+/// Fill a convex quadrilateral (corners in pixel coordinates, in order) with
+/// opaque `color`, antialiased with four subscanlines per row and exact
+/// horizontal coverage.
+pub fn fillQuad(
+    pixels: []u32,
+    stride: u31,
+    buf_width: u31,
+    buf_height: u31,
+    corners: [4][2]f64,
+    color: u32,
+) void {
+    std.debug.assert(color >> 24 == 0xff);
+    var min_y: f64 = std.math.inf(f64);
+    var max_y: f64 = -std.math.inf(f64);
+    for (corners) |c| {
+        std.debug.assert(std.math.isFinite(c[0]) and std.math.isFinite(c[1]));
+        min_y = @min(min_y, c[1]);
+        max_y = @max(max_y, c[1]);
+    }
+    const height_f: f64 = @floatFromInt(buf_height);
+    const width_f: f64 = @floatFromInt(buf_width);
+    const y_start: usize = @intFromFloat(std.math.clamp(@floor(min_y), 0, height_f));
+    const y_end: usize = @intFromFloat(std.math.clamp(@ceil(max_y), 0, height_f));
+    const samples = 4;
+    for (y_start..y_end) |y| {
+        // Span of the quad on each subscanline.
+        var spans: [samples][2]f64 = undefined;
+        var row_left: f64 = std.math.inf(f64);
+        var row_right: f64 = -std.math.inf(f64);
+        for (&spans, 0..) |*span, s| {
+            const sy = @as(f64, @floatFromInt(y)) + (@as(f64, @floatFromInt(s)) + 0.5) / samples;
+            span.* = .{ std.math.inf(f64), -std.math.inf(f64) };
+            for (0..4) |i| {
+                const a = corners[i];
+                const b = corners[(i + 1) % 4];
+                if ((sy < a[1]) == (sy < b[1])) continue;
+                const x = a[0] + (sy - a[1]) * (b[0] - a[0]) / (b[1] - a[1]);
+                span[0] = @min(span[0], x);
+                span[1] = @max(span[1], x);
+            }
+            if (span[0] < span[1]) {
+                row_left = @min(row_left, span[0]);
+                row_right = @max(row_right, span[1]);
+            }
+        }
+        if (!(row_left < row_right)) continue;
+        const x_start: usize = @intFromFloat(std.math.clamp(@floor(row_left), 0, width_f));
+        const x_end: usize = @intFromFloat(std.math.clamp(@ceil(row_right), 0, width_f));
+        for (x_start..x_end) |x| {
+            const left: f64 = @floatFromInt(x);
+            var coverage: f64 = 0;
+            for (spans) |span| {
+                coverage += @max(0, @min(left + 1, span[1]) - @max(left, span[0]));
+            }
+            const alpha: u8 = @intFromFloat(@round(std.math.clamp(coverage / samples, 0, 1) * 255));
+            if (alpha == 0) continue;
+            const pixel = &pixels[y * stride + x];
+            pixel.* = if (alpha == 255) color else blend(color, pixel.*, alpha);
+        }
+    }
+}
+
+test "fillQuad covers an axis-aligned rectangle exactly and clips" {
+    var pixels = [_]u32{0xff000000} ** 16;
+    fillQuad(&pixels, 4, 4, 4, .{ .{ 1, 1 }, .{ 3, 1 }, .{ 3, 3 }, .{ 1, 3 } }, 0xffffffff);
+    for (0..4) |y| {
+        for (0..4) |x| {
+            const inside = x >= 1 and x < 3 and y >= 1 and y < 3;
+            try std.testing.expectEqual(@as(u32, if (inside) 0xffffffff else 0xff000000), pixels[y * 4 + x]);
+        }
+    }
+    // Half-covered edge pixels blend; off-buffer corners are clipped.
+    var edge = [_]u32{0xff000000} ** 4;
+    fillQuad(&edge, 2, 2, 2, .{ .{ -5, -5 }, .{ 1.5, -5 }, .{ 1.5, 9 }, .{ -5, 9 } }, 0xffffffff);
+    try std.testing.expectEqual(@as(u32, 0xffffffff), edge[0]);
+    try std.testing.expect(edge[1] != 0xff000000 and edge[1] != 0xffffffff);
+}
+
 /// Alpha-blend an 8-bit coverage bitmap in `color` over the buffer.
 pub fn blitGlyph(
     pixels: []u32,

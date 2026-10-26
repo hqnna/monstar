@@ -287,6 +287,19 @@ Programs may select another shape with DECSCUSR; the configured shape returns
 when a program requests the default shape or resets the terminal.
 Without keyboard focus the cursor is always drawn as a hollow block.
 .TP
+.BI cursor-trail " = milliseconds"
+Animate the cursor between positions, as Neovide does: each corner glides to
+its new place, and corners leading the motion arrive sooner, so the cursor
+stretches into a trail.
+The value is the trailing corners' travel time, at most 2000.
+The default is 0, which disables the animation.
+Only the focused window's cursor animates.
+.TP
+.BI cursor-trail-size " = fraction"
+Set how much sooner the leading corners arrive, from 0 (the cursor slides
+without stretching) to 1 (the leading edge jumps immediately).
+The default is 0.8.
+.TP
 .BI cursor-style-blink " = true|false"
 Choose whether the default cursor blinks while the window has keyboard focus.
 The default is

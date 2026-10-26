@@ -172,6 +172,12 @@ Other settings:
   discrete.
 - **cursor-style** — Default cursor shape: `block`, `bar`, `underline`, or
   `block_hollow` (default `block`). Programs can still change it with DECSCUSR.
+- **cursor-trail** — Neovide-style cursor animation: milliseconds for the
+  cursor to glide to its new position, stretching into a trail; `0` turns it
+  off (default `0`; try `150`).
+- **cursor-trail-size** — How strongly the cursor stretches, from `0` (slides
+  without stretching) to `1` (the leading edge jumps, the trailing edge
+  follows) (default `0.8`).
 - **cursor-style-blink** — Blink the default cursor while focused (default
   `false`). Programs can request blinking with DECSCUSR or DEC mode 12, which
   is now honored.

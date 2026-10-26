@@ -64,6 +64,9 @@ pub const Job = struct {
     search_no_match: bool,
     /// Transient right-edge scrollback indicator in full-surface pixels.
     scrollbar: ?Renderer.ScrollbarThumb,
+    /// The moving cursor of `cursor-trail`, in grid-local pixels. The
+    /// snapshot's cursor is hidden while it is drawn.
+    cursor_trail: ?[4][2]f64 = null,
     /// Visible kitty placements, resolved on the main thread with image
     /// data repointed at cache-pinned copies; empty when no graphics are
     /// visible.
@@ -84,7 +87,7 @@ pub const Job = struct {
     fn hasOverlay(self: *const Job) bool {
         return self.preedit != null or self.link_hint != null or
             self.search != null or self.search_matches.len > 0 or
-            self.scrollbar != null or
+            self.scrollbar != null or self.cursor_trail != null or
             self.kitty_items.len > 0;
     }
 };
@@ -512,6 +515,9 @@ fn renderJob(self: *AsyncRaster, job: Job, damage: *Damage) !void {
             try self.renderer.render(self.state, grid_pixels, job.grid_width, job.grid_height);
         }
         if (job.scroll_offset == 0) {
+            if (job.cursor_trail) |corners| {
+                self.renderer.renderCursorTrail(self.state, grid_pixels, job.grid_width, job.grid_height, corners);
+            }
             if (job.preedit) |text| {
                 try self.renderer.renderPreedit(self.state, grid_pixels, job.grid_width, job.grid_height, text);
             }

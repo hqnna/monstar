@@ -24,6 +24,7 @@ const drag_preview = @import("drag_preview.zig");
 const Config = @import("Config.zig");
 const CommandNotification = @import("CommandNotification.zig");
 const CursorBlink = @import("CursorBlink.zig");
+const CursorTrail = @import("CursorTrail.zig");
 const keybind = @import("keybind.zig");
 const Font = @import("Font.zig");
 const Keyboard = @import("Keyboard.zig");
@@ -237,6 +238,10 @@ kitty_animation_fd: posix.fd_t,
 compression_fd: posix.fd_t,
 /// Blink phase of a focused cursor in DEC mode 12.
 cursor_blink: CursorBlink,
+/// Animated cursor motion for `cursor-trail`.
+cursor_trail: CursorTrail,
+/// The last submitted job drew the trail, so its pixels must be redrawn.
+cursor_trail_shown: bool = false,
 compression_activity: u64,
 scrollbar_alpha: u8,
 scrollbar_fading: bool,
@@ -682,6 +687,9 @@ pub fn init(
     var cursor_blink: CursorBlink = try .init();
     errdefer cursor_blink.deinit();
 
+    var cursor_trail: CursorTrail = try .init();
+    errdefer cursor_trail.deinit();
+
     // Scope confirmation ran concurrently with the window setup above,
     // so this rarely waits; the child stays gated until its migration
     // is confirmed (or abandoned).
@@ -773,6 +781,7 @@ pub fn init(
         .kitty_animation_fd = kitty_animation_fd,
         .compression_fd = compression_fd,
         .cursor_blink = cursor_blink,
+        .cursor_trail = cursor_trail,
         .compression_activity = term.compressionActivity(),
         .scrollbar_alpha = 0,
         .scrollbar_fading = false,
@@ -1839,6 +1848,7 @@ pub fn deinit(self: *App) void {
     if (self.pending_open_uri) |uri| self.alloc.free(uri);
     self.deinitDbus();
     self.cursor_blink.deinit();
+    self.cursor_trail.deinit();
     _ = std.os.linux.close(self.compression_fd);
     _ = std.os.linux.close(self.kitty_animation_fd);
     _ = std.os.linux.close(self.scrollbar_fd);
@@ -1894,6 +1904,7 @@ pub fn run(self: *App) !void {
         .{ .fd = self.kitty_animation_fd, .events = posix.POLL.IN, .revents = 0 },
         .{ .fd = self.compression_fd, .events = posix.POLL.IN, .revents = 0 },
         .{ .fd = self.cursor_blink.fd, .events = posix.POLL.IN, .revents = 0 },
+        .{ .fd = self.cursor_trail.fd, .events = posix.POLL.IN, .revents = 0 },
     } ++ [_]posix.pollfd{.{ .fd = -1, .events = posix.POLL.OUT, .revents = 0 }} ** Clipboard.max_outgoing_transfers;
     const wl_fd = &fds[0];
     const pipeline_fd = &fds[1];
@@ -1913,7 +1924,8 @@ pub fn run(self: *App) !void {
     const kitty_animation_fd = &fds[15];
     const compression_fd = &fds[16];
     const cursor_blink_fd = &fds[17];
-    const outgoing_clipboard_fds = fds[18..][0..Clipboard.max_outgoing_transfers];
+    const cursor_trail_fd = &fds[18];
+    const outgoing_clipboard_fds = fds[19..][0..Clipboard.max_outgoing_transfers];
 
     while (self.window.running and (!self.child_exited or self.hold)) {
         self.expireDbusRequests();
@@ -2037,6 +2049,10 @@ pub fn run(self: *App) !void {
 
         if (cursor_blink_fd.revents & posix.POLL.IN != 0) {
             if (self.cursor_blink.fire()) self.needs_redraw = true;
+        }
+
+        if (cursor_trail_fd.revents & posix.POLL.IN != 0) {
+            if (self.cursor_trail.fire(std.Io.Clock.awake.now(self.io).nanoseconds)) self.needs_redraw = true;
         }
 
         if (taskbar_progress_fd.revents & posix.POLL.IN != 0) {
@@ -5990,6 +6006,31 @@ test "keyboard removal cancels repeat and reports focus loss once" {
     try std.testing.expectEqualStrings("\x1b[O", buf[0..n]);
 }
 
+/// Where `cursor-trail` draws the cursor in grid-local physical pixels, or
+/// null when it should not animate: unfocused, hidden, off screen, or while
+/// smooth scrolling crops the grid.
+fn cursorTrailRect(self: *const App) ?CursorTrail.Rect {
+    if (self.config.cursor_trail == 0 or !self.focused or self.scroll_offset != 0) return null;
+    const cursor = &self.render_state.cursor;
+    if (!cursor.visible) return null;
+    const viewport = cursor.viewport orelse return null;
+    const cell_w: f64 = @floatFromInt(self.font.cell_width);
+    const cell_h: f64 = @floatFromInt(self.font.cell_height);
+    const col: f64 = @floatFromInt(viewport.x -| @intFromBool(viewport.wide_tail));
+    const cell: CursorTrail.Rect = .{
+        .x = col * cell_w,
+        .y = @as(f64, @floatFromInt(viewport.y)) * cell_h,
+        .width = if (cursor.cell.wide == .wide or viewport.wide_tail) 2 * cell_w else cell_w,
+        .height = cell_h,
+    };
+    const thickness: f64 = @floatFromInt(@max(1, self.font.sprite_metrics.cursor_thickness));
+    return switch (cursor.visual_style) {
+        .block, .block_hollow => cell,
+        .bar => .{ .x = cell.x, .y = cell.y, .width = thickness, .height = cell.height },
+        .underline => .{ .x = cell.x, .y = cell.y + cell.height - thickness, .width = cell.width, .height = thickness },
+    };
+}
+
 /// Blink only a visible, focused cursor in DEC mode 12; an unfocused cursor
 /// is drawn hollow and steady.
 fn syncCursorBlink(self: *App) void {
@@ -7126,6 +7167,7 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
     var overlay_dirty = true;
     var scroll: ?ScrollDetector.Scroll = null;
     var old_cursor: vt.RenderState.Cursor = self.render_state.cursor;
+    var trail_quad: ?CursorTrail.Quad = null;
     if (!frozen) {
         self.syncScrollTarget();
         if (self.scroll_offset != 0 and
@@ -7145,6 +7187,7 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
             self.async_job.link_hint == null and
             self.search == null and self.async_job.search == null and
             new_scrollbar == null and self.async_job.scrollbar == null and
+            self.cursor_trail.start_ns == null and !self.cursor_trail_shown and
             !has_kitty_graphics and self.async_job.kitty.len == 0)
         {
             scroll = try self.scroll_detector.detect(self.alloc, &self.render_state, &self.term);
@@ -7156,9 +7199,19 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
         old_cursor = self.render_state.cursor;
         self.render_state.overscan_request = .{ .below = @intFromBool(self.scroll_offset != 0) };
         try self.render_state.update(self.alloc, &self.term);
-        // The hidden blink phase is renderer-only; cursor row damage below
-        // compares visibility against the previous snapshot.
-        if (!self.cursor_blink.visible) self.render_state.cursor.visible = false;
+        // Follow the cursor before blinking hides it, so a blink does not
+        // restart the trail.
+        const now_ns = std.Io.Clock.awake.now(self.io).nanoseconds;
+        self.cursor_trail.update(
+            self.cursorTrailRect(),
+            now_ns,
+            self.config.cursor_trail,
+            self.config.cursor_trail_size,
+        );
+        trail_quad = self.cursor_trail.quadAt(now_ns);
+        // The hidden blink phase and a moving trail are renderer-only; cursor
+        // row damage below compares visibility against the previous snapshot.
+        if (!self.cursor_blink.visible or trail_quad != null) self.render_state.cursor.visible = false;
         // Ghostty excludes overscan from cursor.viewport. Our cropped grid
         // can expose that row, so include its cursor in this render snapshot.
         if (self.render_state.cursor.viewport == null and self.render_state.overscan.below != 0) {
@@ -7180,6 +7233,10 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
         // overlay, redraw its old pixels instead of repairing from a buffer
         // that still contains the thumb.
         if (self.async_job.scrollbar != null and new_scrollbar == null) {
+            self.render_state.dirty = .full;
+        }
+        // Likewise the last trail frame's pixels lie outside dirty rows.
+        if (self.cursor_trail_shown and trail_quad == null) {
             self.render_state.dirty = .full;
         }
         if (self.render_state.dirty == .partial and self.allRenderRowsDirty()) {
@@ -7204,7 +7261,9 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
             !std.meta.eql(self.async_job.link_range, new_range) or
             !std.meta.eql(self.async_job.search_range, new_search_range) or
             !std.mem.eql(bool, self.async_job.search_matches.items, new_search_matches.items) or
-            !std.meta.eql(self.async_job.scrollbar, new_scrollbar);
+            !std.meta.eql(self.async_job.scrollbar, new_scrollbar) or
+            // A trail moves every frame.
+            trail_quad != null or self.cursor_trail_shown;
         try self.async_job.replaceOverlays(self.alloc, new_preedit, new_link, new_search, new_search_no_match, new_range, new_search_range, new_search_matches, new_scrollbar, hyperlink_hints);
         new_search_matches = .empty;
         var kitty_changed = false;
@@ -7240,7 +7299,7 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
         // Full-surface scrollbar coordinates belong to the old geometry.
         // Remove the thumb while synchronized output holds the old terminal
         // snapshot; the current geometry is picked up when the freeze ends.
-        if (self.async_job.scrollbar != null) self.render_state.dirty = .full;
+        if (self.async_job.scrollbar != null or self.cursor_trail_shown) self.render_state.dirty = .full;
     }
     std.debug.assert(self.held_frame == null);
     const target = self.window.acquireRenderTarget() catch |err| {
@@ -7298,6 +7357,7 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
         .search = self.async_job.search,
         .search_no_match = self.async_job.search_no_match,
         .scrollbar = if (frozen) null else self.async_job.scrollbar,
+        .cursor_trail = trail_quad,
         .kitty_items = self.async_job.kitty,
         .overlay_dirty = overlay_dirty,
         .scroll_shift = if (scroll) |value| value.shift else null,
@@ -7311,6 +7371,7 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
     };
     if (!frozen) self.term.screens.active.kitty_images.dirty = false;
     if (!frozen) self.async_force_full = false;
+    self.cursor_trail_shown = trail_quad != null;
     return .submitted;
 }
 

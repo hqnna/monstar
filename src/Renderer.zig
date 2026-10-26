@@ -808,6 +808,27 @@ pub fn renderScrollbarThumb(
     );
 }
 
+/// Draw the animated cursor of `cursor-trail` in the cursor's fill color.
+/// Corners are grid-local physical pixels.
+pub fn renderCursorTrail(
+    self: *Renderer,
+    state: *const vt.RenderState,
+    pixels: []u32,
+    width: u31,
+    height: u31,
+    corners: [4][2]f64,
+) void {
+    const cell = cursorCellRgb(state.cursor.style, &state.cursor.cell, &state.colors);
+    pixel_raster.fillQuad(
+        pixels,
+        self.pixelStride(width),
+        width,
+        height,
+        corners,
+        argb(self.cursorFill(&state.colors, cell.fg, cell.bg)),
+    );
+}
+
 const OverlayPosition = enum { bottom_left, top_right };
 
 const OverlayText = struct {
