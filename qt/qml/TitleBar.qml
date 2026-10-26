@@ -12,6 +12,8 @@ Rectangle {
     required property Window window
     // Tabs on another edge leave the bar to the title.
     property bool showTabs: true
+    // A lone tab merges into the bar, which shows its title.
+    readonly property bool tabsVisible: showTabs && host.tabs.length > 1
 
     implicitHeight: 36
     color: tint(palette.window)
@@ -59,7 +61,7 @@ Rectangle {
 
     TabStrip {
         id: tabs
-        visible: bar.showTabs
+        visible: bar.tabsVisible
         host: bar.host
         location: "top"
         showAddButton: false
@@ -71,11 +73,13 @@ Rectangle {
         height: parent.height
     }
 
+    // Centered in the bar while it fits between the icon and the buttons.
     Text {
-        visible: !bar.showTabs
-        anchors.left: icon.right
-        anchors.leftMargin: 10
-        anchors.right: addButton.left
+        visible: !bar.tabsVisible
+        readonly property real minX: icon.x + icon.width + 10
+        readonly property real maxRight: addButton.x - 10
+        width: Math.min(implicitWidth, maxRight - minX)
+        x: Math.max(minX, Math.min((bar.width - width) / 2, maxRight - width))
         anchors.verticalCenter: parent.verticalCenter
         text: bar.host.windowTitle
         elide: Text.ElideRight
