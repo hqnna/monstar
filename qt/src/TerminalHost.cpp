@@ -16,6 +16,12 @@
 #include <QWaylandXdgSurface>
 #include <QWaylandXdgToplevel>
 
+#include <QWindow>
+
+#if MONSTAR_HAVE_KWINDOWSYSTEM
+#include <KWindowEffects>
+#endif
+
 #include <wayland-server-core.h>
 
 #include <algorithm>
@@ -218,6 +224,7 @@ TerminalHost::TerminalHost(HostConfig *config, LaunchOptions options, QObject *p
 {
     connect(m_config, &HostConfig::changed, this, [this] {
         relayout();
+        applyWindowEffects();
         Q_EMIT tabsChanged();
     });
     // Terminals hang up their shells when the compositor goes away. Detach
@@ -310,6 +317,23 @@ void TerminalHost::setCompositor(MonstarCompositor *compositor)
         m_firstLaunched = true;
         openTab(m_options.workingDirectory, m_options.firstArguments);
     }
+}
+
+void TerminalHost::setWindow(QWindow *window)
+{
+    m_window = window;
+    applyWindowEffects();
+}
+
+void TerminalHost::applyWindowEffects()
+{
+    if (!m_window)
+        return;
+#if MONSTAR_HAVE_KWINDOWSYSTEM
+    // KWindowEffects speaks KWin's blur protocol; other desktops ignore it.
+    const bool blur = m_config->backgroundBlur() && m_config->backgroundOpacity() < 1;
+    KWindowEffects::enableBlurBehind(m_window, blur);
+#endif
 }
 
 void TerminalHost::setPaneArea(qreal width, qreal height)

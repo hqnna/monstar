@@ -30,7 +30,8 @@ MonstarCompositor {
             height: 720
             visible: true
             title: root.host.windowTitle
-            color: root.host.config.background
+            color: root.host.config.translucentBackground
+            Component.onCompleted: root.host.setWindow(appWindow)
 
             TabStrip {
                 id: tabStrip

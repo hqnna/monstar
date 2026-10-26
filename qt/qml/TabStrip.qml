@@ -12,7 +12,12 @@ Rectangle {
     readonly property bool vertical: location === "left" || location === "right"
 
     implicitHeight: 34
-    color: palette.window
+    color: tint(palette.window)
+
+    // Backgrounds share the terminals' background-opacity.
+    function tint(c) {
+        return Qt.rgba(c.r, c.g, c.b, c.a * strip.host.config.backgroundOpacity)
+    }
     readonly property int tabExtent: vertical ? 30 : Math.min(220, Math.max(90, (width - addButton.width) / Math.max(1, strip.host.tabs.length)))
 
     SystemPalette {
@@ -41,7 +46,7 @@ Rectangle {
 
             width: strip.vertical ? list.width : strip.tabExtent
             height: strip.vertical ? strip.tabExtent : list.height
-            color: modelData.active ? palette.base : (hover.hovered ? Qt.lighter(palette.window, 1.08) : palette.window)
+            color: strip.tint(modelData.active ? palette.base : (hover.hovered ? Qt.lighter(palette.window, 1.08) : palette.window))
 
             // Accent on the edge facing the terminals.
             Rectangle {
@@ -106,7 +111,7 @@ Rectangle {
         height: strip.vertical ? 30 : strip.height
         x: strip.vertical ? 0 : list.width
         y: strip.vertical ? list.height : 0
-        color: addHover.hovered ? Qt.lighter(palette.window, 1.08) : palette.window
+        color: strip.tint(addHover.hovered ? Qt.lighter(palette.window, 1.08) : palette.window)
 
         Text {
             anchors.centerIn: parent

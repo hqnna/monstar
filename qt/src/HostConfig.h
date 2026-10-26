@@ -22,6 +22,9 @@ class HostConfig : public QObject
     Q_PROPERTY(QColor splitDividerColor READ splitDividerColor NOTIFY changed)
     Q_PROPERTY(QColor background READ background NOTIFY changed)
     Q_PROPERTY(bool focusFollowsMouse READ focusFollowsMouse NOTIFY changed)
+    Q_PROPERTY(qreal backgroundOpacity READ backgroundOpacity NOTIFY changed)
+    // The background color with backgroundOpacity applied.
+    Q_PROPERTY(QColor translucentBackground READ translucentBackground NOTIFY changed)
 
 public:
     // `path` overrides the default location; `overrides` are `key=value`
@@ -50,6 +53,16 @@ public:
     // first terminal frame arrives.
     QColor background() const { return m_background.isValid() ? m_background : QColor(0x1e, 0x1e, 0x1e); }
     bool focusFollowsMouse() const { return m_focusFollowsMouse; }
+    // Shared with the terminals, which draw their own translucent cells.
+    qreal backgroundOpacity() const { return m_backgroundOpacity; }
+    QColor translucentBackground() const
+    {
+        QColor color = background();
+        color.setAlphaF(float(m_backgroundOpacity));
+        return color;
+    }
+    // Blur behind a translucent window, as background-blur does for Monstar.
+    bool backgroundBlur() const { return m_backgroundBlur; }
     bool inheritWorkingDirectory() const { return m_inheritWorkingDirectory; }
     // The terminal executable; empty selects `monstar` beside monstar-qt or
     // on PATH.
@@ -70,6 +83,8 @@ private:
     QColor m_splitDividerColor;
     QColor m_background;
     bool m_focusFollowsMouse;
+    qreal m_backgroundOpacity;
+    bool m_backgroundBlur;
     bool m_inheritWorkingDirectory;
     QString m_terminalCommand;
 };

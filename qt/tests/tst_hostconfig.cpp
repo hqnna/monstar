@@ -17,6 +17,21 @@ private Q_SLOTS:
         QVERIFY(config.inheritWorkingDirectory());
         QVERIFY(!config.focusFollowsMouse());
         QCOMPARE(config.unfocusedSplitFill(), config.background());
+        QCOMPARE(config.backgroundOpacity(), 1.0);
+        QVERIFY(config.backgroundBlur());
+    }
+
+    void opacityAndBlurFollowMonstar()
+    {
+        HostConfig config(QStringLiteral("/nonexistent/monstar-config"),
+                          {QStringLiteral("background-opacity=0.8"), QStringLiteral("background-blur=false"),
+                           QStringLiteral("background=#102030")});
+        QCOMPARE(config.backgroundOpacity(), 0.8);
+        QVERIFY(!config.backgroundBlur());
+        QCOMPARE(config.translucentBackground().alpha(), 204);
+        QCOMPARE(config.translucentBackground().red(), 0x10);
+        QVERIFY(!config.set(QStringLiteral("background-opacity"), QStringLiteral("1.5")));
+        QCOMPARE(config.backgroundOpacity(), 0.8);
     }
 
     void fileThenOverridesApply()

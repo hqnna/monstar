@@ -26,6 +26,7 @@
 
 class MonstarCompositor;
 class QProcess;
+class QWindow;
 
 struct Pane {
     int id = 0;
@@ -140,6 +141,9 @@ public:
     Q_INVOKABLE void closeTab(int index);
     Q_INVOKABLE void focusPane(int paneId);
     Q_INVOKABLE void setDividerRatio(int dividerId, qreal ratio);
+    // Ask the desktop to blur behind a translucent window, following the
+    // configuration from now on.
+    Q_INVOKABLE void setWindow(QWindow *window);
 
     // Perform a Ghostty-syntax action for the terminal owning `surface`.
     void performAction(QWaylandSurface *surface, const QString &action, const QString &workingDirectory);
@@ -173,10 +177,12 @@ private:
 
     void relayout();
     void configure(Pane *pane);
+    void applyWindowEffects();
 
     HostConfig *m_config;
     LaunchOptions m_options;
     MonstarCompositor *m_compositor = nullptr;
+    QPointer<QWindow> m_window;
     PaneModel *m_panes;
     DividerModel *m_dividers;
     std::vector<std::unique_ptr<Tab>> m_tabs;

@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
+#include <QQuickWindow>
 #include <QSocketNotifier>
 
 #include <csignal>
@@ -89,6 +90,10 @@ int main(int argc, char **argv)
 
     HostConfig config(configPath, overrides);
     TerminalHost host(&config, options);
+    // Translucency needs an alpha channel from the start; changing
+    // background-opacity from 1 takes effect in new windows.
+    if (config.backgroundOpacity() < 1)
+        QQuickWindow::setDefaultAlphaBuffer(true);
 
     // `pkill -USR1 monstar` reloads Monstar's configuration, and matches
     // this process too: reload the host settings instead of terminating.

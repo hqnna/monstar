@@ -25,6 +25,7 @@
         pkgs.qt6.qtdeclarative
         pkgs.qt6.qtwayland
         pkgs.wayland
+        pkgs.kdePackages.kwindowsystem
       ];
       qtNativeBuildInputs = pkgs: [
         pkgs.cmake

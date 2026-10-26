@@ -63,6 +63,8 @@ void HostConfig::reset()
     m_splitDividerColor = QColor(0x3a, 0x3a, 0x3a);
     m_background = QColor();
     m_focusFollowsMouse = false;
+    m_backgroundOpacity = 1;
+    m_backgroundBlur = true;
     m_inheritWorkingDirectory = true;
     m_terminalCommand.clear();
 }
@@ -135,6 +137,17 @@ bool HostConfig::set(const QString &key, const QString &value)
         if (!color.isValid())
             return false;
         m_background = color;
+    } else if (key == u"background-opacity") {
+        bool ok = false;
+        const qreal opacity = value.toDouble(&ok);
+        if (!ok || !std::isfinite(opacity) || opacity < 0 || opacity > 1)
+            return false;
+        m_backgroundOpacity = opacity;
+    } else if (key == u"background-blur") {
+        const auto enabled = parseBool(value);
+        if (!enabled)
+            return false;
+        m_backgroundBlur = *enabled;
     } else if (key == u"focus-follows-mouse") {
         const auto enabled = parseBool(value);
         if (!enabled)

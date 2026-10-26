@@ -10,6 +10,8 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Quick WaylandCompositor Test)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(WaylandServer REQUIRED IMPORTED_TARGET wayland-server)
 pkg_check_modules(WaylandClient REQUIRED IMPORTED_TARGET wayland-client)
+# Optional: blur behind translucent windows on KDE Plasma.
+find_package(KF6WindowSystem QUIET)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
@@ -49,6 +51,12 @@ target_link_libraries(monstar-qt PRIVATE
     PkgConfig::WaylandServer
     PkgConfig::WaylandClient
 )
+if(KF6WindowSystem_FOUND)
+    target_link_libraries(monstar-qt PRIVATE KF6::WindowSystem)
+    target_compile_definitions(monstar-qt PRIVATE MONSTAR_HAVE_KWINDOWSYSTEM=1)
+else()
+    message(STATUS "KF6WindowSystem not found: background-blur is unavailable in monstar-qt")
+endif()
 
 install(TARGETS monstar-qt RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
