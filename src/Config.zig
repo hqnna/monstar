@@ -18,6 +18,23 @@ const points_per_inch = 72.0;
 const min_window_width = 10;
 const min_window_height = 4;
 
+pub const PaddingColor = enum {
+    /// The default background color.
+    background,
+    /// The background of the nearest cell, except top and bottom edges
+    /// whose row is a prompt, has default-background cells, or uses
+    /// powerline glyphs.
+    extend,
+    /// The background of the nearest cell, always.
+    extend_always,
+
+    fn parse(value: []const u8) ?PaddingColor {
+        if (std.mem.eql(u8, value, "extend-always")) return .extend_always;
+        if (std.mem.eql(u8, value, "extend_always")) return null;
+        return std.meta.stringToEnum(PaddingColor, value);
+    }
+};
+
 fn warn(comptime fmt: []const u8, args: anytype) void {
     if (!builtin.is_test) log.warn(fmt, args);
 }
@@ -110,6 +127,8 @@ adjust_cell_height: ?MetricModifier = null,
 /// both sides; two values are left/right for X and top/bottom for Y.
 window_padding_x: WindowPadding = .{},
 window_padding_y: WindowPadding = .{},
+/// How the window padding is filled, as Ghostty's `window-padding-color`.
+window_padding_color: PaddingColor = .background,
 /// Initial terminal grid size in cells; 0 leaves a dimension unset. Both must
 /// be set to take effect. Nonzero values are clamped to at least 10 columns
 /// and 4 rows. This only affects startup; reloads do not resize the window.
@@ -322,6 +341,8 @@ pub fn set(self: *Config, arena: std.mem.Allocator, key: []const u8, value: []co
         self.window_padding_x = try parseWindowPadding(value);
     } else if (std.mem.eql(u8, key, "window-padding-y")) {
         self.window_padding_y = try parseWindowPadding(value);
+    } else if (std.mem.eql(u8, key, "window-padding-color")) {
+        self.window_padding_color = PaddingColor.parse(value) orelse return error.InvalidValue;
     } else if (std.mem.eql(u8, key, "window-width")) {
         self.window_width = try parseWindowCells(value, min_window_width);
     } else if (std.mem.eql(u8, key, "window-height")) {
@@ -1136,6 +1157,16 @@ test "font features accept HarfBuzz syntax and comma lists" {
     try std.testing.expectEqualStrings("-liga", config.font_features.items[1]);
     try std.testing.expectEqualStrings("ss01", config.font_features.items[2]);
     try std.testing.expectEqualStrings("cv01=2", config.font_features.items[3]);
+}
+
+test "window padding color accepts Ghostty values" {
+    var arena_state: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_state.deinit();
+    const arena = arena_state.allocator();
+    try std.testing.expectEqual(PaddingColor.background, parse(arena, "").window_padding_color);
+    try std.testing.expectEqual(PaddingColor.extend, parse(arena, "window-padding-color = extend").window_padding_color);
+    try std.testing.expectEqual(PaddingColor.extend_always, parse(arena, "window-padding-color = extend-always").window_padding_color);
+    try std.testing.expectEqual(PaddingColor.background, parse(arena, "window-padding-color = extend_always").window_padding_color);
 }
 
 test "env entries replace by name and allow removal" {

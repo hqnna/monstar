@@ -7362,6 +7362,7 @@ fn startAsyncRender(self: *App) !AsyncRenderStart {
         .search_no_match = self.async_job.search_no_match,
         .scrollbar = if (frozen) null else self.async_job.scrollbar,
         .cursor_trail = trail_quad,
+        .padding_color = self.config.window_padding_color,
         .kitty_items = self.async_job.kitty,
         .overlay_dirty = overlay_dirty,
         .scroll_shift = if (scroll) |value| value.shift else null,

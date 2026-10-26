@@ -1919,6 +1919,50 @@ pub fn copyPixels(noalias dst: []u32, noalias src: []const u32) void {
     return pixel_copy.copyPixels(dst, src);
 }
 
+/// The pixel a cell's own background paints: its SGR background after
+/// reverse video, ignoring selection, search, and the cursor.
+pub fn cellBackgroundPixel(
+    self: *const Renderer,
+    colors: *const vt.RenderState.Colors,
+    raw: *const vt.Cell,
+    style: *const vt.Style,
+) u32 {
+    var bg = style.bg(raw, &colors.palette);
+    if (style.flags.inverse) bg = style.fg(.{ .default = colors.foreground, .palette = &colors.palette });
+    const color = bg orelse return self.backgroundPixel(colors.background);
+    return if (self.background_alpha_cells) self.backgroundPixel(color) else argb(color);
+}
+
+/// Ghostty's heuristics for `window-padding-color = extend`: rows whose
+/// background should not stretch into the top or bottom padding. Prompts and
+/// powerline glyphs look wrong extended, and a row with default-background
+/// cells already matches the default padding.
+pub fn neverExtendBackground(
+    row: *const vt.page.Row,
+    raws: []const vt.Cell,
+    styles: []const vt.Style,
+    colors: *const vt.RenderState.Colors,
+) bool {
+    std.debug.assert(raws.len == styles.len);
+    switch (row.semantic_prompt) {
+        .prompt, .prompt_continuation => return true,
+        .none => {},
+    }
+    for (raws, styles) |*raw, *cell_style| {
+        switch (raw.content_tag) {
+            .codepoint, .codepoint_grapheme => switch (raw.content.codepoint.data) {
+                0xE0B0...0xE0C8, 0xE0CA, 0xE0CC...0xE0D2, 0xE0D4 => return true,
+                else => {},
+            },
+            .bg_color_palette, .bg_color_rgb => {},
+        }
+        const style: vt.Style = if (raw.style_id == 0) .{} else cell_style.*;
+        const bg = style.bg(raw, &colors.palette) orelse return true;
+        if (bg.eql(colors.background)) return true;
+    }
+    return false;
+}
+
 /// Pack a background color in wl_shm's premultiplied ARGB8888 form.
 pub fn backgroundPixel(self: *const Renderer, rgb: vt.color.RGB) u32 {
     return pixel_raster.premultipliedArgb(rgb, self.background_alpha);

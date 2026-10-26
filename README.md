@@ -89,6 +89,11 @@ mouse-scroll-multiplier = precision:1,discrete:3
 smooth-scrolling = true
 ```
 
+Set `window-padding-color = extend` to fill the padding with the nearest
+cell's background, as in Ghostty, so editors and other full-screen programs
+reach the window edges; `extend-always` skips the exceptions for prompts,
+powerline glyphs, and rows with default-background cells.
+
 Set `font-feature` to turn OpenType features on or off, as in Ghostty; for
 example `font-feature = -calt` disables programming ligatures. Repeat it or
 use a comma-separated list (`font-feature = -calt, -liga, ss01`).

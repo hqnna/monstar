@@ -67,6 +67,8 @@ pub const Job = struct {
     /// The moving cursor of `cursor-trail`, in grid-local pixels. The
     /// snapshot's cursor is hidden while it is drawn.
     cursor_trail: ?[4][2]f64 = null,
+    /// How to fill the window padding around the grid.
+    padding_color: Config.PaddingColor = .background,
     /// Visible kitty placements, resolved on the main thread with image
     /// data repointed at cache-pinned copies; empty when no graphics are
     /// visible.
@@ -236,6 +238,11 @@ working: bool = false,
 job: Job = undefined,
 result: ?Result = null,
 state: *vt.RenderState,
+/// Edge colors of `window-padding-color = extend`: left and right per row,
+/// then top and bottom per column. Worker-owned.
+padding_scratch: std.ArrayList(u32) = .empty,
+/// Identifies the last painted padding, so a change forces full damage.
+padding_hash: u64 = 0,
 
 /// Creates an idle raster worker but does not start its thread. The returned
 /// value owns its renderer, font, and event descriptors and borrows `state`
@@ -303,6 +310,7 @@ pub fn deinit(self: *AsyncRaster) void {
     _ = linux.close(self.job_fd);
     _ = linux.close(self.complete_fd);
     self.renderer.deinit();
+    self.padding_scratch.deinit(self.alloc);
     self.font.deinit(self.alloc);
     self.alloc.destroy(self.font);
     self.* = undefined;
@@ -506,7 +514,6 @@ fn renderJob(self: *AsyncRaster, job: Job, damage: *Damage) !void {
             damage.* = .none;
             return;
         }
-        clearPadding(job, self.renderer.backgroundPixel(self.state.colors.background));
         if (job.scroll_offset != 0) {
             try self.renderer.renderScrolled(self.state, job.kitty_items, job.preedit, grid_pixels, job.grid_width, job.grid_height, job.scroll_offset);
         } else if (job.kitty_items.len > 0) {
@@ -514,6 +521,9 @@ fn renderJob(self: *AsyncRaster, job: Job, damage: *Damage) !void {
         } else {
             try self.renderer.render(self.state, grid_pixels, job.grid_width, job.grid_height);
         }
+        // Before overlays: extended padding covers the grid's unused edge,
+        // which the scrollbar may draw over.
+        _ = try self.paintPadding(job);
         if (job.scroll_offset == 0) {
             if (job.cursor_trail) |corners| {
                 self.renderer.renderCursorTrail(self.state, grid_pixels, job.grid_width, job.grid_height, corners);
@@ -548,7 +558,8 @@ fn renderJob(self: *AsyncRaster, job: Job, damage: *Damage) !void {
         return;
     }
     if (job.scroll_shift) |shift| {
-        clearPadding(job, self.renderer.backgroundPixel(self.state.colors.background));
+        // Every retained row moves, so the whole frame is damaged anyway.
+        damage.* = .full;
         // Ink crossing row boundaries cannot be reused independently: a
         // discarded row may have painted into a retained row's pixels.
         if (!self.font.neighbor_row_overhang and
@@ -557,36 +568,36 @@ fn renderJob(self: *AsyncRaster, job: Job, damage: *Damage) !void {
         {
             try self.renderer.shiftCellState(self.state.rows, self.state.cols, shift);
             try self.renderer.renderDirty(self.state, grid_pixels, job.grid_width, job.grid_height);
-            // Rasterization touched only dirty rows, but every retained row
-            // moved to a different surface location.
-            damage.* = .full;
-            return;
+        } else {
+            // Dirty rows may already have been narrowed by the detector.
+            try self.renderer.render(self.state, grid_pixels, job.grid_width, job.grid_height);
         }
-        // Dirty rows may already have been narrowed by the detector.
-        try self.renderer.render(self.state, grid_pixels, job.grid_width, job.grid_height);
-        damage.* = .full;
+        _ = try self.paintPadding(job);
         return;
     }
     switch (self.state.dirty) {
         .full => {
-            clearPadding(job, self.renderer.backgroundPixel(self.state.colors.background));
             try self.renderer.render(self.state, grid_pixels, job.grid_width, job.grid_height);
+            _ = try self.paintPadding(job);
             damage.* = .full;
         },
         .partial => {
             if (!repairToPreviousFrame(job)) {
-                clearPadding(job, self.renderer.backgroundPixel(self.state.colors.background));
                 try self.renderer.render(self.state, grid_pixels, job.grid_width, job.grid_height);
+                _ = try self.paintPadding(job);
                 damage.* = .full;
                 return;
             }
             try self.renderer.renderDirty(self.state, grid_pixels, job.grid_width, job.grid_height);
             damage.* = if (self.renderer.rendered_rects.items.len == 0) .none else .partial;
+            // Dirty rows repaint the grid's unused edge with the default
+            // background; repaint the padding, and damage it if it changed.
+            if (try self.paintPadding(job)) damage.* = .full;
         },
         .false => {
             if (!repairToPreviousFrame(job)) {
-                clearPadding(job, self.renderer.backgroundPixel(self.state.colors.background));
                 try self.renderer.render(self.state, grid_pixels, job.grid_width, job.grid_height);
+                _ = try self.paintPadding(job);
                 damage.* = .full;
                 return;
             }
@@ -600,6 +611,92 @@ fn gridPixels(job: Job) []u32 {
     std.debug.assert(job.grid_y + job.grid_height <= job.height);
     const offset = @as(usize, job.grid_y) * job.width + job.grid_x;
     return job.pixels[offset..];
+}
+
+/// Fill the padding around the grid for `job.padding_color`. Returns whether
+/// it differs from the previously painted padding.
+fn paintPadding(self: *AsyncRaster, job: Job) !bool {
+    const state = self.state;
+    const background = self.renderer.backgroundPixel(state.colors.background);
+    const cell_width = self.font.cell_width;
+    const cell_height = self.font.cell_height;
+    const cols: usize = @min(state.cols, job.grid_width / cell_width);
+    const rows: usize = @min(state.rows, job.grid_height / cell_height);
+    // Smooth scrolling moves rows through the edges; keep them plain.
+    if (job.padding_color == .background or job.scroll_offset != 0 or cols == 0 or rows == 0) {
+        clearPadding(job, background);
+        return self.notePadding(job, &.{background}, false, false);
+    }
+
+    try self.padding_scratch.resize(self.alloc, 2 * rows + 2 * cols);
+    const scratch = self.padding_scratch.items;
+    const left = scratch[0..rows];
+    const right = scratch[rows .. 2 * rows];
+    const top = scratch[2 * rows ..][0..cols];
+    const bottom = scratch[2 * rows + cols ..][0..cols];
+
+    const row_data = state.row_data.slice();
+    const all_cells = row_data.items(.cells);
+    const all_raw = row_data.items(.raw);
+    var extend_up = false;
+    var extend_down = false;
+    for (0..rows) |y| {
+        const cells = all_cells[y].slice();
+        const raws = cells.items(.raw)[0..cols];
+        const styles = cells.items(.style)[0..cols];
+        left[y] = self.cellPixel(&raws[0], &styles[0]);
+        right[y] = self.cellPixel(&raws[cols - 1], &styles[cols - 1]);
+        if (y != 0 and y != rows - 1) continue;
+        const extend = job.padding_color == .extend_always or
+            !Renderer.neverExtendBackground(&all_raw[y], raws, styles, &state.colors);
+        if (y == 0) extend_up = extend;
+        if (y == rows - 1) extend_down = extend;
+        const edge = if (y == 0) top else bottom;
+        for (edge, raws, styles) |*pixel, *raw, *style| {
+            pixel.* = if (extend) self.cellPixel(raw, style) else background;
+        }
+        if (y == 0 and rows == 1) @memcpy(bottom, top);
+    }
+
+    const width: usize = job.width;
+    const grid_x: usize = job.grid_x;
+    const grid_end_x = grid_x + cols * cell_width;
+    const grid_y: usize = job.grid_y;
+    const grid_end_y = grid_y + rows * cell_height;
+    for (0..job.height) |py| {
+        const line = job.pixels[py * width ..][0..width];
+        if (py >= grid_y and py < grid_end_y) {
+            const y = (py - grid_y) / cell_height;
+            @memset(line[0..grid_x], left[y]);
+            @memset(line[grid_end_x..], right[y]);
+            continue;
+        }
+        const up = py < grid_y;
+        const extend = if (up) extend_up else extend_down;
+        const edge = if (up) top else bottom;
+        const y: usize = if (up) 0 else rows - 1;
+        @memset(line[0..grid_x], if (extend) left[y] else background);
+        for (edge, 0..) |pixel, x| {
+            const cell_x = grid_x + x * cell_width;
+            @memset(line[cell_x .. cell_x + cell_width], pixel);
+        }
+        @memset(line[grid_end_x..], if (extend) right[y] else background);
+    }
+    return self.notePadding(job, scratch, extend_up, extend_down);
+}
+
+fn cellPixel(self: *const AsyncRaster, raw: *const vt.Cell, style: *const vt.Style) u32 {
+    const plain: vt.Style = .{};
+    return self.renderer.cellBackgroundPixel(&self.state.colors, raw, if (raw.style_id == 0) &plain else style);
+}
+
+fn notePadding(self: *AsyncRaster, job: Job, colors: []const u32, up: bool, down: bool) bool {
+    var hasher: std.hash.Wyhash = .init(0);
+    std.hash.autoHash(&hasher, .{ job.padding_color, job.width, job.height, job.grid_x, job.grid_y, job.grid_width, job.grid_height, up, down });
+    hasher.update(std.mem.sliceAsBytes(colors));
+    const hash = hasher.final();
+    defer self.padding_hash = hash;
+    return hash != self.padding_hash;
 }
 
 fn clearPadding(job: Job, color: u32) void {
@@ -755,6 +852,103 @@ test "unchanged dirty rows report no damage" {
 
     try std.testing.expectEqual(Damage.none, damage);
     try std.testing.expectEqual(@as(usize, 0), raster.renderer.rendered_rects.items.len);
+}
+
+test "extended padding follows edge cells and damages changes" {
+    const alloc = std.testing.allocator;
+    var term: vt.Terminal = try .init(std.testing.io, alloc, .{ .cols = 4, .rows = 2 });
+    defer term.deinit(alloc);
+    var stream = term.vtStream();
+    defer stream.deinit();
+    // Row 0 is red throughout; row 1 starts blue and ends in the default.
+    stream.nextSlice("\x1b[?25l\x1b[41m    \r\n\x1b[44m  \x1b[0m");
+
+    var state: vt.RenderState = .empty;
+    defer state.deinit(alloc);
+    try state.update(alloc, &term);
+
+    var font: Font = try .init(alloc, "monospace", 16, null);
+    defer font.deinit(alloc);
+    var raster = try AsyncRaster.init(font.discovery(), .{ .r = 1, .g = 2, .b = 3 }, null, null, null, 255, false, &state);
+    defer raster.deinit();
+
+    const pad: u31 = 3;
+    const cw = raster.font.cell_width;
+    const ch = raster.font.cell_height;
+    const width: u31 = cw * 4 + 2 * pad;
+    const height: u31 = ch * 2 + 2 * pad;
+    const pixels = try alloc.alloc(u32, @as(usize, width) * height);
+    defer alloc.free(pixels);
+    var job: Job = .{
+        .pixels = pixels,
+        .source_pixels = null,
+        .width = width,
+        .height = height,
+        .grid_x = pad,
+        .grid_y = pad,
+        .grid_width = cw * 4,
+        .grid_height = ch * 2,
+        .age = 1,
+        .generation = 1,
+        .focused = true,
+        .hyperlink_hints = false,
+        .link_range = null,
+        .search_range = null,
+        .search_matches = &.{},
+        .search_background = .{ .r = 1, .g = 2, .b = 3 },
+        .search_foreground = .{ .r = 4, .g = 5, .b = 6 },
+        .preedit = null,
+        .link_hint = null,
+        .search = null,
+        .search_no_match = false,
+        .scrollbar = null,
+        .kitty_items = &.{},
+        .overlay_dirty = false,
+        .scroll_shift = null,
+        .repair = .none,
+        .padding_color = .extend,
+    };
+    const at = struct {
+        fn f(p: []const u32, w: u31, x: usize, y: usize) u32 {
+            return p[y * w + x];
+        }
+    }.f;
+    const cell = struct {
+        fn f(p: []const u32, w: u31, c: u31, r: u31, cw_: u31, ch_: u31, pad_: u31) u32 {
+            return p[(@as(usize, pad_) + r * ch_ + ch_ / 2) * w + pad_ + c * cw_ + cw_ / 2];
+        }
+    }.f;
+
+    // The worker thread sets this per job.
+    raster.renderer.buffer_stride = width;
+    var damage: Damage = .none;
+    try raster.renderJob(job, &damage);
+    const red = cell(pixels, width, 0, 0, cw, ch, pad);
+    const blue = cell(pixels, width, 0, 1, cw, ch, pad);
+    const default_bg = cell(pixels, width, 3, 1, cw, ch, pad);
+    try std.testing.expect(red != default_bg and blue != default_bg);
+    // Top extends row 0; the sides follow each row's edge cells.
+    try std.testing.expectEqual(red, at(pixels, width, 0, 0));
+    try std.testing.expectEqual(red, at(pixels, width, width - 1, 0));
+    try std.testing.expectEqual(blue, at(pixels, width, 0, pad + ch + 1));
+    try std.testing.expectEqual(default_bg, at(pixels, width, width - 1, pad + ch + 1));
+    // Row 1 has default-background cells, so the bottom stays plain.
+    try std.testing.expectEqual(default_bg, at(pixels, width, pad + cw / 2, height - 1));
+
+    job.padding_color = .extend_always;
+    state.dirty = .full;
+    try raster.renderJob(job, &damage);
+    try std.testing.expectEqual(blue, at(pixels, width, pad + cw / 2, height - 1));
+    try std.testing.expectEqual(default_bg, at(pixels, width, pad + 3 * cw + cw / 2, height - 1));
+
+    // A partial update that recolors an edge cell damages the padding.
+    stream.nextSlice("\x1b[1;1H\x1b[42m \x1b[0m");
+    try state.update(alloc, &term);
+    damage = .none;
+    try raster.renderJob(job, &damage);
+    try std.testing.expectEqual(Damage.full, damage);
+    try std.testing.expectEqual(cell(pixels, width, 0, 0, cw, ch, pad), at(pixels, width, 0, pad + 1));
+    try std.testing.expect(at(pixels, width, 0, pad + 1) != red);
 }
 
 test "primary and alternate screen scroll pixels match full repaint" {

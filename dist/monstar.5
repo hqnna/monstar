@@ -277,6 +277,19 @@ Set minimum top and bottom padding in logical pixels.
 One value applies to both sides; two values set top and bottom independently.
 The default is zero.
 .TP
+.BI window-padding-color " = background|extend|extend-always"
+Choose how the padding around the grid is filled.
+.B background
+uses the background color.
+.B extend
+uses the background of the nearest cell, so full-screen programs that paint
+their own background, such as editors, reach the window edges.
+The top and bottom edges stay plain when the nearest row is a shell prompt,
+contains powerline glyphs, or has cells with the default background.
+.B extend-always
+extends without these exceptions.
+The default is background.
+.TP
 .BI window-height " = rows"
 Set the initial terminal grid height in cells.
 Takes effect only together with
