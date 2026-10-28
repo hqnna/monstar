@@ -314,6 +314,12 @@ void TerminalHost::setCompositor(MonstarCompositor *compositor)
     Q_ASSERT(!m_compositor);
     m_compositor = compositor;
     connect(compositor, &MonstarCompositor::hostActionRequested, this, &TerminalHost::performAction);
+    if (KeyboardForwarder *keyboard = compositor->keyboardForwarder()) {
+        connect(keyboard, &KeyboardForwarder::focusNeeded, this, [this] {
+            if (const Tab *tab = current())
+                Q_EMIT focusRequested(tab->focused);
+        });
+    }
     // Clients that disconnect, crash, or exit end their panes.
     connect(compositor, &QWaylandCompositor::surfaceAboutToBeDestroyed, this, [this](QWaylandSurface *surface) {
         if (Pane *pane = m_panes->findSurface(surface))

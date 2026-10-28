@@ -11,6 +11,7 @@
 #include <QList>
 #include <QObject>
 #include <QPointer>
+#include <QSet>
 #include <QWaylandSurface>
 
 struct wl_client;
@@ -40,7 +41,7 @@ public:
     // Callbacks from the desktop's registry, seat, and keyboard.
     void hostSeat(uint32_t name, uint32_t version);
     void hostCapabilities(uint32_t capabilities);
-    void hostFocus(bool focused);
+    void hostLeave();
     void hostKeymap(uint32_t format, int fd, uint32_t size);
     void hostKey(uint32_t time, uint32_t key, uint32_t state);
     void hostModifiers(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group);
@@ -49,6 +50,10 @@ public:
     // Called for each new client wl_keyboard resource.
     void addResource(wl_resource *resource);
     void removeResource(wl_resource *resource);
+
+Q_SIGNALS:
+    // A key arrived while no terminal had keyboard focus.
+    void focusNeeded();
 
 private:
     void dispatchHostEvents();
@@ -70,8 +75,7 @@ private:
     int32_t m_repeatRate = 25;
     int32_t m_repeatDelay = 600;
     QList<wl_resource *> m_resources;
-    // The terminal that had keyboard focus when the window lost it.
-    QPointer<QWaylandSurface> m_restoreFocus;
-    bool m_windowFocused = true;
+    // Keys pressed in the window and not yet released.
+    QSet<uint32_t> m_heldKeys;
     QHash<wl_client *, wl_listener *> m_clientListeners;
 };
