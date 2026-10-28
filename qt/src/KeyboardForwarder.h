@@ -20,6 +20,7 @@ struct wl_event_queue;
 struct wl_keyboard;
 struct wl_registry;
 struct wl_seat;
+struct wl_surface;
 struct wl_listener;
 struct wl_resource;
 class QWaylandCompositor;
@@ -41,7 +42,12 @@ public:
     // Callbacks from the desktop's registry, seat, and keyboard.
     void hostSeat(uint32_t name, uint32_t version);
     void hostCapabilities(uint32_t capabilities);
-    void hostLeave();
+    void hostEnter(wl_surface *surface);
+    void hostLeave(wl_surface *surface);
+
+    // Whether the desktop's keyboard focus is in this window. Keyboard
+    // focus inside the window is unaffected; this only reports activation.
+    bool windowActive() const { return m_windowActive; }
     void hostKeymap(uint32_t format, int fd, uint32_t size);
     void hostKey(uint32_t time, uint32_t key, uint32_t state);
     void hostModifiers(uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group);
@@ -54,8 +60,10 @@ public:
 Q_SIGNALS:
     // A key arrived while no terminal had keyboard focus.
     void focusNeeded();
+    void windowActiveChanged();
 
 private:
+    void setWindowActive(bool active);
     void dispatchHostEvents();
     QList<wl_resource *> focusedResources() const;
     void sendState(wl_resource *resource);
@@ -77,5 +85,7 @@ private:
     QList<wl_resource *> m_resources;
     // Keys pressed in the window and not yet released.
     QSet<uint32_t> m_heldKeys;
+    wl_surface *m_hostFocus = nullptr;
+    bool m_windowActive = true;
     QHash<wl_client *, wl_listener *> m_clientListeners;
 };

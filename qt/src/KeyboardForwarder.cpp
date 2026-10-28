@@ -87,9 +87,11 @@ const wl_keyboard_listener hostListener = {
     .keymap = [](void *data, wl_keyboard *, uint32_t format, int32_t fd, uint32_t size) {
         static_cast<KeyboardForwarder *>(data)->hostKeymap(format, fd, size);
     },
-    .enter = [](void *, wl_keyboard *, uint32_t, wl_surface *, wl_array *) {},
-    .leave = [](void *data, wl_keyboard *, uint32_t, wl_surface *) {
-        static_cast<KeyboardForwarder *>(data)->hostLeave();
+    .enter = [](void *data, wl_keyboard *, uint32_t, wl_surface *surface, wl_array *) {
+        static_cast<KeyboardForwarder *>(data)->hostEnter(surface);
+    },
+    .leave = [](void *data, wl_keyboard *, uint32_t, wl_surface *surface) {
+        static_cast<KeyboardForwarder *>(data)->hostLeave(surface);
     },
     .key = [](void *data, wl_keyboard *, uint32_t, uint32_t time, uint32_t key, uint32_t state) {
         static_cast<KeyboardForwarder *>(data)->hostKey(time, key, state);
@@ -297,8 +299,29 @@ QList<wl_resource *> KeyboardForwarder::focusedResources() const
     return result;
 }
 
-void KeyboardForwarder::hostLeave()
+void KeyboardForwarder::hostEnter(wl_surface *surface)
 {
+    m_hostFocus = surface;
+    setWindowActive(true);
+}
+
+void KeyboardForwarder::setWindowActive(bool active)
+{
+    if (active == m_windowActive)
+        return;
+    m_windowActive = active;
+    Q_EMIT windowActiveChanged();
+}
+
+void KeyboardForwarder::hostLeave(wl_surface *surface)
+{
+    // Desktops also send leave for surfaces that never had focus; only the
+    // surface that entered deactivates the window.
+    if (surface && surface == m_hostFocus) {
+        m_hostFocus = nullptr;
+        setWindowActive(false);
+    }
+
     // Keys held as the window loses keyboard focus are never released to
     // us. Release them in the terminal, so it stops repeating them and does
     // not keep modifiers down. Keyboard focus inside the window is left

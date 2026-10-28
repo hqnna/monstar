@@ -43,6 +43,8 @@ struct Pane {
     bool dimmed = false;
     // Last size sent in a configure event.
     QSize configured;
+    // Whether the last configure marked the terminal activated.
+    bool configuredActive = false;
 };
 
 // Panes in creation order; their geometry and state are QML roles.

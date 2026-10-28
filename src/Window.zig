@@ -108,6 +108,10 @@ rendering_pending: bool,
 frame_counter: u64,
 suspended: bool,
 resizing: bool,
+/// The toplevel is the active window. True until the compositor first
+/// reports activation, since some compositors never do.
+activated: bool,
+activation_seen: bool,
 render_ctx: ?*anyopaque,
 resize_fn: ?ResizeFn,
 keyboard_fn: ?KeyboardFn,
@@ -436,6 +440,8 @@ pub fn create(
         .frame_counter = 0,
         .suspended = false,
         .resizing = false,
+        .activated = true,
+        .activation_seen = false,
         .render_ctx = null,
         .resize_fn = null,
         .keyboard_fn = null,
@@ -1637,6 +1643,9 @@ fn toplevelListener(_: *xdg.Toplevel, event: xdg.Toplevel.Event, self: *Window) 
             if (configure.height > 0) self.pending_height = @intCast(configure.height);
             self.suspended = toplevelState(configure.states, .suspended);
             self.resizing = toplevelState(configure.states, .resizing);
+            const activated = toplevelState(configure.states, .activated);
+            if (activated) self.activation_seen = true;
+            self.activated = activated or !self.activation_seen;
         },
         .close => self.running = false,
         .configure_bounds, .wm_capabilities => {},

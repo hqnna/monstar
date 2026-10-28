@@ -166,8 +166,14 @@ window: *Window,
 keyboard: Keyboard,
 /// Terminal contents changed since the last committed frame.
 needs_redraw: bool,
-/// Keyboard focus state; unfocused windows draw a hollow cursor.
+/// Keyboard focus in an active window; otherwise the cursor is hollow and
+/// focus reports say the terminal lost focus.
 focused: bool,
+/// The surface has keyboard focus.
+keyboard_focused: bool = true,
+/// The toplevel is the active window. monstar-qt keeps keyboard focus on
+/// its pane while its own window is inactive and reports that this way.
+window_active: bool = true,
 ime_focused: bool,
 ime_preedit: ?[]u8,
 ime_pending_preedit: ?[]u8,
@@ -1948,6 +1954,7 @@ pub fn run(self: *App) !void {
             if (display.dispatchPending() != .SUCCESS) return error.DispatchFailed;
             self.window.flushPending();
             self.syncTerminalVisibility();
+            self.syncWindowActivation();
         }
         if (self.hasQueuedDbusMessages()) {
             display.cancelRead();
@@ -2001,6 +2008,7 @@ pub fn run(self: *App) !void {
         if (display.dispatchPending() != .SUCCESS) return error.DispatchFailed;
         self.window.flushPending();
         self.syncTerminalVisibility();
+        self.syncWindowActivation();
 
         if (signal_fd.revents & posix.POLL.IN != 0) {
             try self.drainSignals();
@@ -5979,6 +5987,8 @@ test "keyboard removal cancels repeat and reports focus loss once" {
     defer app.term.deinit(alloc);
     app.term.modes.set(.focus_event, true);
     app.focused = true;
+    app.keyboard_focused = true;
+    app.window_active = true;
     app.async_generation = 0;
     app.held_frame = null;
     app.repeat_fd = try createTimerFd();
@@ -6044,7 +6054,18 @@ fn syncCursorBlink(self: *App) void {
     if (self.cursor_blink.sync(should_blink)) self.needs_redraw = true;
 }
 
-fn setFocus(self: *App, focused: bool) void {
+fn setFocus(self: *App, keyboard_focused: bool) void {
+    self.keyboard_focused = keyboard_focused;
+    self.applyFocus(keyboard_focused and self.window_active);
+}
+
+fn syncWindowActivation(self: *App) void {
+    if (self.window_active == self.window.activated) return;
+    self.window_active = self.window.activated;
+    self.applyFocus(self.keyboard_focused and self.window_active);
+}
+
+fn applyFocus(self: *App, focused: bool) void {
     if (self.focused == focused) return;
     self.focused = focused;
     self.requestFullAsyncRedraw();

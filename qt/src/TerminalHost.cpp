@@ -319,6 +319,7 @@ void TerminalHost::setCompositor(MonstarCompositor *compositor)
             if (const Tab *tab = current())
                 Q_EMIT focusRequested(tab->focused);
         });
+        connect(keyboard, &KeyboardForwarder::windowActiveChanged, this, &TerminalHost::relayout);
     }
     // Clients that disconnect, crash, or exit end their panes.
     connect(compositor, &QWaylandCompositor::surfaceAboutToBeDestroyed, this, [this](QWaylandSurface *surface) {
@@ -699,13 +700,18 @@ void TerminalHost::configure(Pane *pane)
     if (!pane->toplevel || m_awaitingInitialSize)
         return;
     const QSize size = pane->rect.size().toSize();
-    if (size.isEmpty() || size == pane->configured)
+    // Activated tells the terminal it is focused in an active window, for
+    // its cursor and focus reports; keyboard focus stays with the pane.
+    const KeyboardForwarder *keyboard = m_compositor ? m_compositor->keyboardForwarder() : nullptr;
+    const bool active = pane->focused && (!keyboard || keyboard->windowActive());
+    if (size.isEmpty() || (size == pane->configured && active == pane->configuredActive))
         return;
     pane->configured = size;
+    pane->configuredActive = active;
     // Maximized: the terminal must use exactly this size and draw no
     // decorations or shadows.
     QList<QWaylandXdgToplevel::State> states{QWaylandXdgToplevel::MaximizedState};
-    if (pane->focused)
+    if (active)
         states.append(QWaylandXdgToplevel::ActivatedState);
     pane->toplevel->sendConfigure(size, states);
 }
